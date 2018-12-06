@@ -125,9 +125,6 @@ ssize_t part_stat_show(struct device *dev, struct device_attribute *attr,
 	struct request_queue *q = part_to_disk(p)->queue;
 	unsigned int inflight[2];
 
-	part_stat_lock();
-	part_round_stats(q, p);
-	part_stat_unlock();
 	part_in_flight(q, p, inflight);
 	return sprintf(
 		buf,

@@ -24,7 +24,7 @@
 #ifdef CONFIG_BLK_DEV_MD
 extern void md_autodetect_dev(dev_t dev);
 #endif
- 
+
 /*
  * disk_name() is used by partition check code and the genhd driver.
  * It formats the devicename of the indicated disk into
@@ -36,7 +36,7 @@ char *disk_name(struct gendisk *hd, int partno, char *buf)
 {
 	if (!partno)
 		snprintf(buf, BDEVNAME_SIZE, "%s", hd->disk_name);
-	else if (isdigit(hd->disk_name[strlen(hd->disk_name)-1]))
+	else if (isdigit(hd->disk_name[strlen(hd->disk_name) - 1]))
 		snprintf(buf, BDEVNAME_SIZE, "%sp%d", hd->disk_name, partno);
 	else
 		snprintf(buf, BDEVNAME_SIZE, "%s%d", hd->disk_name, partno);
@@ -64,8 +64,8 @@ EXPORT_SYMBOL(bio_devname);
  */
 const char *__bdevname(dev_t dev, char *buffer)
 {
-	scnprintf(buffer, BDEVNAME_SIZE, "unknown-block(%u,%u)",
-				MAJOR(dev), MINOR(dev));
+	scnprintf(buffer, BDEVNAME_SIZE, "unknown-block(%u,%u)", MAJOR(dev),
+		  MINOR(dev));
 	return buffer;
 }
 
@@ -84,46 +84,53 @@ static ssize_t part_start_show(struct device *dev,
 {
 	struct hd_struct *p = dev_to_part(dev);
 
-	return sprintf(buf, "%llu\n",(unsigned long long)p->start_sect);
+	return sprintf(buf, "%llu\n", (unsigned long long)p->start_sect);
 }
 
-ssize_t part_size_show(struct device *dev,
-		       struct device_attribute *attr, char *buf)
+ssize_t part_size_show(struct device *dev, struct device_attribute *attr,
+		       char *buf)
 {
 	struct hd_struct *p = dev_to_part(dev);
-	return sprintf(buf, "%llu\n",(unsigned long long)part_nr_sects_read(p));
+	return sprintf(buf, "%llu\n",
+		       (unsigned long long)part_nr_sects_read(p));
 }
 
-static ssize_t part_ro_show(struct device *dev,
-			    struct device_attribute *attr, char *buf)
+static ssize_t part_ro_show(struct device *dev, struct device_attribute *attr,
+			    char *buf)
 {
 	struct hd_struct *p = dev_to_part(dev);
 	return sprintf(buf, "%d\n", p->policy ? 1 : 0);
 }
 
 static ssize_t part_alignment_offset_show(struct device *dev,
-					  struct device_attribute *attr, char *buf)
+					  struct device_attribute *attr,
+					  char *buf)
 {
 	struct hd_struct *p = dev_to_part(dev);
 	return sprintf(buf, "%llu\n", (unsigned long long)p->alignment_offset);
 }
 
 static ssize_t part_discard_alignment_show(struct device *dev,
-					   struct device_attribute *attr, char *buf)
+					   struct device_attribute *attr,
+					   char *buf)
 {
 	struct hd_struct *p = dev_to_part(dev);
 	return sprintf(buf, "%u\n", p->discard_alignment);
 }
 
-ssize_t part_stat_show(struct device *dev,
-		       struct device_attribute *attr, char *buf)
+ssize_t part_stat_show(struct device *dev, struct device_attribute *attr,
+		       char *buf)
 {
 	struct hd_struct *p = dev_to_part(dev);
 	struct request_queue *q = part_to_disk(p)->queue;
 	unsigned int inflight[2];
 
+	part_stat_lock();
+	part_round_stats(q, p);
+	part_stat_unlock();
 	part_in_flight(q, p, inflight);
-	return sprintf(buf,
+	return sprintf(
+		buf,
 		"%8lu %8lu %8llu %8u "
 		"%8lu %8lu %8llu %8u "
 		"%8u %8u %8u "
@@ -136,8 +143,7 @@ ssize_t part_stat_show(struct device *dev,
 		part_stat_read(p, ios[STAT_WRITE]),
 		part_stat_read(p, merges[STAT_WRITE]),
 		(unsigned long long)part_stat_read(p, sectors[STAT_WRITE]),
-		(unsigned int)part_stat_read_msecs(p, STAT_WRITE),
-		inflight[0],
+		(unsigned int)part_stat_read_msecs(p, STAT_WRITE), inflight[0],
 		jiffies_to_msecs(part_stat_read(p, io_ticks)),
 		jiffies_to_msecs(part_stat_read(p, time_in_queue)),
 		part_stat_read(p, ios[STAT_DISCARD]),
@@ -158,16 +164,15 @@ ssize_t part_inflight_show(struct device *dev, struct device_attribute *attr,
 }
 
 #ifdef CONFIG_FAIL_MAKE_REQUEST
-ssize_t part_fail_show(struct device *dev,
-		       struct device_attribute *attr, char *buf)
+ssize_t part_fail_show(struct device *dev, struct device_attribute *attr,
+		       char *buf)
 {
 	struct hd_struct *p = dev_to_part(dev);
 
 	return sprintf(buf, "%d\n", p->make_it_fail);
 }
 
-ssize_t part_fail_store(struct device *dev,
-			struct device_attribute *attr,
+ssize_t part_fail_store(struct device *dev, struct device_attribute *attr,
 			const char *buf, size_t count)
 {
 	struct hd_struct *p = dev_to_part(dev);
@@ -190,23 +195,21 @@ static DEVICE_ATTR(stat, 0444, part_stat_show, NULL);
 static DEVICE_ATTR(inflight, 0444, part_inflight_show, NULL);
 #ifdef CONFIG_FAIL_MAKE_REQUEST
 static struct device_attribute dev_attr_fail =
-	__ATTR(make-it-fail, 0644, part_fail_show, part_fail_store);
+	__ATTR(make - it - fail, 0644, part_fail_show, part_fail_store);
 #endif
 
-static struct attribute *part_attrs[] = {
-	&dev_attr_partition.attr,
-	&dev_attr_start.attr,
-	&dev_attr_size.attr,
-	&dev_attr_ro.attr,
-	&dev_attr_alignment_offset.attr,
-	&dev_attr_discard_alignment.attr,
-	&dev_attr_stat.attr,
-	&dev_attr_inflight.attr,
+static struct attribute *part_attrs[] = { &dev_attr_partition.attr,
+					  &dev_attr_start.attr,
+					  &dev_attr_size.attr,
+					  &dev_attr_ro.attr,
+					  &dev_attr_alignment_offset.attr,
+					  &dev_attr_discard_alignment.attr,
+					  &dev_attr_stat.attr,
+					  &dev_attr_inflight.attr,
 #ifdef CONFIG_FAIL_MAKE_REQUEST
-	&dev_attr_fail.attr,
+					  &dev_attr_fail.attr,
 #endif
-	NULL
-};
+					  NULL };
 
 static struct attribute_group part_attr_group = {
 	.attrs = part_attrs,
@@ -239,16 +242,16 @@ static int part_uevent(struct device *dev, struct kobj_uevent_env *env)
 }
 
 struct device_type part_type = {
-	.name		= "partition",
-	.groups		= part_attr_groups,
-	.release	= part_release,
-	.uevent		= part_uevent,
+	.name = "partition",
+	.groups = part_attr_groups,
+	.release = part_release,
+	.uevent = part_uevent,
 };
 
 static void delete_partition_work_fn(struct work_struct *work)
 {
-	struct hd_struct *part = container_of(to_rcu_work(work), struct hd_struct,
-					rcu_work);
+	struct hd_struct *part =
+		container_of(to_rcu_work(work), struct hd_struct, rcu_work);
 
 	part->start_sect = 0;
 	part->nr_sects = 0;
@@ -459,8 +462,7 @@ static int drop_partitions(struct gendisk *disk, struct block_device *bdev)
 	return 0;
 }
 
-static bool part_zone_aligned(struct gendisk *disk,
-			      struct block_device *bdev,
+static bool part_zone_aligned(struct gendisk *disk, struct block_device *bdev,
 			      sector_t from, sector_t size)
 {
 	unsigned int zone_sectors = bdev_zone_sectors(bdev);
@@ -497,13 +499,11 @@ static bool part_zone_aligned(struct gendisk *disk,
 		}
 
 	} else {
-
 		if (from & (zone_sectors - 1))
 			return false;
 		if ((from + size) < get_capacity(disk) &&
 		    (size & (zone_sectors - 1)))
 			return false;
-
 	}
 
 	return true;
@@ -582,7 +582,7 @@ rescan:
 		if (from >= get_capacity(disk)) {
 			printk(KERN_WARNING
 			       "%s: p%d start %llu is beyond EOD, ",
-			       disk->disk_name, p, (unsigned long long) from);
+			       disk->disk_name, p, (unsigned long long)from);
 			if (disk_unlock_native_capacity(disk))
 				goto rescan;
 			continue;
@@ -591,7 +591,7 @@ rescan:
 		if (from + size > get_capacity(disk)) {
 			printk(KERN_WARNING
 			       "%s: p%d size %llu extends beyond EOD, ",
-			       disk->disk_name, p, (unsigned long long) size);
+			       disk->disk_name, p, (unsigned long long)size);
 
 			if (disk_unlock_native_capacity(disk)) {
 				/* free state and restart */
@@ -617,13 +617,12 @@ rescan:
 		    !part_zone_aligned(disk, bdev, from, size)) {
 			printk(KERN_WARNING
 			       "%s: p%d start %llu+%llu is not zone aligned\n",
-			       disk->disk_name, p, (unsigned long long) from,
-			       (unsigned long long) size);
+			       disk->disk_name, p, (unsigned long long)from,
+			       (unsigned long long)size);
 			continue;
 		}
 
-		part = add_partition(disk, p, from, size,
-				     state->parts[p].flags,
+		part = add_partition(disk, p, from, size, state->parts[p].flags,
 				     &state->parts[p].info);
 		if (IS_ERR(part)) {
 			printk(KERN_ERR " %s: p%d could not be added: %ld\n",
@@ -664,13 +663,15 @@ unsigned char *read_dev_sector(struct block_device *bdev, sector_t n, Sector *p)
 	struct address_space *mapping = bdev->bd_inode->i_mapping;
 	struct page *page;
 
-	page = read_mapping_page(mapping, (pgoff_t)(n >> (PAGE_SHIFT-9)), NULL);
+	page = read_mapping_page(mapping, (pgoff_t)(n >> (PAGE_SHIFT - 9)),
+				 NULL);
 	if (!IS_ERR(page)) {
 		if (PageError(page))
 			goto fail;
 		p->v = page;
-		return (unsigned char *)page_address(page) +  ((n & ((1 << (PAGE_SHIFT - 9)) - 1)) << 9);
-fail:
+		return (unsigned char *)page_address(page) +
+		       ((n & ((1 << (PAGE_SHIFT - 9)) - 1)) << 9);
+	fail:
 		put_page(page);
 	}
 	p->v = NULL;

@@ -3072,13 +3072,12 @@ unsigned long disk_start_io_acct(struct gendisk *disk, unsigned int sectors,
 	struct hd_struct *part = &disk->part0;
 	const int sgrp = op_stat_group(op);
 	unsigned long now = READ_ONCE(jiffies);
-	int cpu;
 
-	cpu = part_stat_lock();
-	part_round_stats(disk->queue, cpu, part);
-	part_stat_inc(cpu, part, ios[sgrp]);
-	part_stat_add(cpu, part, sectors[sgrp], sectors);
-	part_inc_in_flight(disk->queue, part, op_is_write(op));
+	part_stat_lock();
+	update_io_ticks(part, now, false);
+	part_stat_inc(part, ios[sgrp]);
+	part_stat_add(part, sectors[sgrp], sectors);
+	part_stat_local_inc(part, in_flight[op_is_write(op)]);
 	part_stat_unlock();
 
 	return now;
@@ -3092,12 +3091,11 @@ void disk_end_io_acct(struct gendisk *disk, unsigned int op,
 	const int sgrp = op_stat_group(op);
 	unsigned long now = READ_ONCE(jiffies);
 	unsigned long duration = now - start_time;
-	int cpu;
 
-	cpu = part_stat_lock();
-	part_stat_add(cpu, part, nsecs[sgrp], jiffies_to_nsecs(duration));
-	part_round_stats(disk->queue, cpu, part);
-	part_dec_in_flight(disk->queue, part, op_is_write(op));
+	part_stat_lock();
+	update_io_ticks(part, now, true);
+	part_stat_add(part, nsecs[sgrp], jiffies_to_nsecs(duration));
+	part_stat_local_dec(part, in_flight[op_is_write(op)]);
 	part_stat_unlock();
 }
 EXPORT_SYMBOL(disk_end_io_acct);

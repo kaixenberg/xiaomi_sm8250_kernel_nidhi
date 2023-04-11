@@ -2243,11 +2243,17 @@ end_bio:
 
 static void zram_bio_read(struct zram *zram, struct bio *bio)
 {
-	int ret;
+	struct bvec_iter iter;
+	struct bio_vec bv;
+	unsigned long start_time;
 
-	if (!op_is_write(op)) {
-		ret = zram_bvec_read(zram, bvec, index, offset, bio);
-		if (unlikely(ret < 0)) {
+	start_time = bio_start_io_acct(bio);
+	bio_for_each_segment (bv, bio, iter) {
+		u32 index = iter.bi_sector >> SECTORS_PER_PAGE_SHIFT;
+		u32 offset = (iter.bi_sector & (SECTORS_PER_PAGE - 1))
+			     << SECTOR_SHIFT;
+
+		if (zram_bvec_read(zram, &bv, index, offset, bio) < 0) {
 			atomic64_inc(&zram->stats.failed_reads);
 			bio->bi_status = BLK_STS_IOERR;
 			break;
@@ -2257,7 +2263,73 @@ static void zram_bio_read(struct zram *zram, struct bio *bio)
 		zram_slot_lock(zram, index);
 		zram_accessed(zram, index);
 		zram_slot_unlock(zram, index);
-		return 0;
+	}
+	bio_end_io_acct(bio, start_time);
+	bio_endio(bio);
+}
+
+static void zram_bio_write(struct zram *zram, struct bio *bio)
+{
+	struct bvec_iter iter;
+	struct bio_vec bv;
+	unsigned long start_time;
+
+	start_time = bio_start_io_acct(bio);
+	bio_for_each_segment (bv, bio, iter) {
+		u32 index = iter.bi_sector >> SECTORS_PER_PAGE_SHIFT;
+		u32 offset = (iter.bi_sector & (SECTORS_PER_PAGE - 1))
+			     << SECTOR_SHIFT;
+
+		if (zram_bvec_write(zram, &bv, index, offset, bio) < 0) {
+			atomic64_inc(&zram->stats.failed_writes);
+			bio->bi_status = BLK_STS_IOERR;
+			break;
+		}
+
+		zram_slot_lock(zram, index);
+		zram_accessed(zram, index);
+		zram_slot_unlock(zram, index);
+	}
+	bio_end_io_acct(bio, start_time);
+	bio_endio(bio);
+}
+
+/*
+ * Handler function for all zram I/O requests.
+ */
+static blk_qc_t zram_make_request(struct request_queue *queue, struct bio *bio)
+{
+	struct zram *zram = bio->bi_disk->private_data;
+
+	switch (bio_op(bio)) {
+	case REQ_OP_READ:
+		zram_bio_read(zram, bio);
+		break;
+	case REQ_OP_WRITE:
+		zram_bio_write(zram, bio);
+		break;
+	case REQ_OP_DISCARD:
+	case REQ_OP_WRITE_ZEROES:
+		zram_bio_discard(zram, bio);
+		break;
+	default:
+		WARN_ON_ONCE(1);
+		bio_endio(bio);
+	}
+	return BLK_QC_T_NONE;
+}
+
+static void zram_slot_free_notify(struct block_device *bdev,
+				  unsigned long index)
+{
+	struct zram *zram;
+
+	zram = bdev->bd_disk->private_data;
+
+	atomic64_inc(&zram->stats.notify_free);
+	if (!zram_slot_trylock(zram, index)) {
+		atomic64_inc(&zram->stats.miss_free);
+		return;
 	}
 
 	static void __zram_make_request(struct zram * zram, struct bio * bio)

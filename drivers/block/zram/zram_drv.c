@@ -2268,61 +2268,30 @@ static void zram_bio_read(struct zram *zram, struct bio *bio)
 		struct bvec_iter iter;
 		unsigned long start_time;
 
-		index = bio->bi_iter.bi_sector >> SECTORS_PER_PAGE_SHIFT;
-		offset = (bio->bi_iter.bi_sector & (SECTORS_PER_PAGE - 1))
-			 << SECTOR_SHIFT;
+		static void __zram_make_request(struct zram * zram,
+						struct bio * bio)
+		{
+			struct bvec_iter iter;
+			struct bio_vec bv;
+			unsigned long start_time;
 
-		start_time = bio_start_io_acct(bio);
-		bio_for_each_segment (bvec, bio, iter) {
-			struct bio_vec bv = bvec;
-			unsigned int unwritten = bvec.bv_len;
+			start_time = bio_start_io_acct(bio);
+			bio_for_each_segment (bv, bio, iter) {
+				u32 index = iter.bi_sector >>
+					    SECTORS_PER_PAGE_SHIFT;
+				u32 offset = (iter.bi_sector &
+					      (SECTORS_PER_PAGE - 1))
+					     << SECTOR_SHIFT;
 
-			do {
-				bv.bv_len =
-					min_t(unsigned int, PAGE_SIZE - offset,
-					      unwritten);
 				if (zram_bvec_rw(zram, &bv, index, offset,
 						 bio_op(bio), bio) < 0) {
 					bio->bi_status = BLK_STS_IOERR;
 					break;
 				}
-
-				bv.bv_offset += bv.bv_len;
-				unwritten -= bv.bv_len;
-
-				update_position(&index, &offset, &bv);
-			} while (unwritten);
-		}
-		bio_end_io_acct(bio, start_time);
-		bio_endio(bio);
-	}
-
-	static void zram_bio_write(struct zram * zram, struct bio * bio)
-	{
-		unsigned long start_time = bio_start_io_acct(bio);
-		struct bvec_iter iter = bio->bi_iter;
-
-		do {
-			u32 index = iter.bi_sector >> SECTORS_PER_PAGE_SHIFT;
-			u32 offset = (iter.bi_sector & (SECTORS_PER_PAGE - 1))
-				     << SECTOR_SHIFT;
-			struct bio_vec bv = bio_iter_iovec(bio, iter);
-
-			bv.bv_len = min_t(u32, bv.bv_len, PAGE_SIZE - offset);
-
-			if (zram_bvec_write(zram, &bv, index, offset, bio) <
-			    0) {
-				atomic64_inc(&zram->stats.failed_writes);
-				bio->bi_status = BLK_STS_IOERR;
-				break;
 			}
-
-			zram_slot_lock(zram, index);
-			zram_accessed(zram, index);
-			zram_slot_unlock(zram, index);
-
-			bio_advance_iter_single(bio, &iter, bv.bv_len);
-		} while (iter.bi_size);
+			bio_end_io_acct(bio, start_time);
+			bio_endio(bio);
+		}
 
 		bio_end_io_acct(bio, start_time);
 		bio_endio(bio);

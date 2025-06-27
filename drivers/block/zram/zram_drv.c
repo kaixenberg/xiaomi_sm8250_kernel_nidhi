@@ -1326,7 +1326,7 @@ static ssize_t recomp_algorithm_show(struct device *dev,
 			continue;
 
 		sz += sysfs_emit_at(buf, sz, "#%d: ", prio);
-		sz += zcomp_available_show(zram->comp_algs[prio], buf, sz);
+		sz += __comp_algorithm_show(zram, prio, buf + sz);
 	}
 	up_read(&zram->init_lock);
 	return sz;
@@ -2315,7 +2315,8 @@ static blk_qc_t zram_make_request(struct request_queue *queue, struct bio *bio)
 		break;
 	case REQ_OP_WRITE:
 #if IS_ENABLED(CONFIG_KCOMPRESSD)
-		if (kcompressd_enabled() && !schedule_bio_write(zram, bio, zram_bio_write_callback))
+		if (kcompressd_enabled() &&
+		    !schedule_bio_write(zram, bio, zram_bio_write_callback))
 			break;
 #endif
 		zram_bio_write(zram, bio);

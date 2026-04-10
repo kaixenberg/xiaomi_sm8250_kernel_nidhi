@@ -4,14 +4,13 @@
 
 #include <uapi/linux/seccomp.h>
 
-#define SECCOMP_FILTER_FLAG_MASK	(SECCOMP_FILTER_FLAG_TSYNC	| \
-					 SECCOMP_FILTER_FLAG_LOG	| \
-					 SECCOMP_FILTER_FLAG_SPEC_ALLOW)
+#define SECCOMP_FILTER_FLAG_MASK                                               \
+	(SECCOMP_FILTER_FLAG_TSYNC | SECCOMP_FILTER_FLAG_LOG |                 \
+	 SECCOMP_FILTER_FLAG_SPEC_ALLOW)
 
 #ifdef CONFIG_SECCOMP
 
 #include <linux/thread_info.h>
-#include <linux/atomic.h>
 #include <asm/seccomp.h>
 
 struct seccomp_filter;
@@ -28,7 +27,6 @@ struct seccomp_filter;
  */
 struct seccomp {
 	int mode;
-	atomic_t filter_count;
 	struct seccomp_filter *filter;
 };
 
@@ -37,7 +35,7 @@ extern int __secure_computing(const struct seccomp_data *sd);
 static inline int secure_computing(const struct seccomp_data *sd)
 {
 	if (unlikely(test_thread_flag(TIF_SECCOMP)))
-		return  __secure_computing(sd);
+		return __secure_computing(sd);
 	return 0;
 }
 #else
@@ -56,13 +54,19 @@ static inline int seccomp_mode(struct seccomp *s)
 
 #include <linux/errno.h>
 
-struct seccomp { };
-struct seccomp_filter { };
+struct seccomp {};
+struct seccomp_filter {};
 
 #ifdef CONFIG_HAVE_ARCH_SECCOMP_FILTER
-static inline int secure_computing(struct seccomp_data *sd) { return 0; }
+static inline int secure_computing(struct seccomp_data *sd)
+{
+	return 0;
+}
 #else
-static inline void secure_computing_strict(int this_syscall) { return; }
+static inline void secure_computing_strict(int this_syscall)
+{
+	return;
+}
 #endif
 
 static inline long prctl_get_seccomp(void)
@@ -84,7 +88,7 @@ static inline int seccomp_mode(struct seccomp *s)
 #ifdef CONFIG_SECCOMP_FILTER
 extern void put_seccomp_filter(struct task_struct *tsk);
 extern void get_seccomp_filter(struct task_struct *tsk);
-#else  /* CONFIG_SECCOMP_FILTER */
+#else /* CONFIG_SECCOMP_FILTER */
 static inline void put_seccomp_filter(struct task_struct *tsk)
 {
 	return;
@@ -101,8 +105,8 @@ extern long seccomp_get_filter(struct task_struct *task,
 extern long seccomp_get_metadata(struct task_struct *task,
 				 unsigned long filter_off, void __user *data);
 #else
-static inline long seccomp_get_filter(struct task_struct *task,
-				      unsigned long n, void __user *data)
+static inline long seccomp_get_filter(struct task_struct *task, unsigned long n,
+				      void __user *data)
 {
 	return -EINVAL;
 }

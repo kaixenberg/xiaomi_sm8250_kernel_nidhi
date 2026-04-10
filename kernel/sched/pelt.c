@@ -83,7 +83,7 @@ static u32 __accumulate_pelt_segments(u64 periods, u32 d1, u32 d3)
 	return c1 + c2 + c3;
 }
 
-#define cap_scale(v, s) ((v)*(s) >> SCHED_CAPACITY_SHIFT)
+#define cap_scale(v, s) ((v) * (s) >> SCHED_CAPACITY_SHIFT)
 
 /*
  * Accumulate the three separate parts of the sum; d1 the remainder
@@ -106,9 +106,9 @@ static u32 __accumulate_pelt_segments(u64 periods, u32 d1, u32 d3)
  *      d1 y^p + 1024 \Sum y^n + d3 y^0		(Step 2)
  *                     n=1
  */
-static __always_inline u32
-accumulate_sum(u64 delta, struct sched_avg *sa,
-	       unsigned long load, unsigned long runnable, int running)
+static __always_inline u32 accumulate_sum(u64 delta, struct sched_avg *sa,
+					  unsigned long load,
+					  unsigned long runnable, int running)
 {
 	u32 contrib = (u32)delta; /* p == 0 -> delta < 1024 */
 	u64 periods;
@@ -145,8 +145,9 @@ accumulate_sum(u64 delta, struct sched_avg *sa,
 				 * the below usage of @contrib to disappear entirely,
 				 * so no point in calculating it.
 				 */
-				contrib = __accumulate_pelt_segments(periods,
-						1024 - sa->period_contrib, delta);
+				contrib = __accumulate_pelt_segments(
+					periods, 1024 - sa->period_contrib,
+					delta);
 			}
 		}
 	}
@@ -160,12 +161,14 @@ accumulate_sum(u64 delta, struct sched_avg *sa,
 
 	if (runnable) {
 		sa->runnable_sum += runnable * contrib << SCHED_CAPACITY_SHIFT;
-		sa->runnable_sum = min_t(u64, sa->runnable_sum, divider * runnable);
+		sa->runnable_sum =
+			min_t(u64, sa->runnable_sum, divider * runnable);
 	}
 
 	if (running) {
 		sa->util_sum += contrib << SCHED_CAPACITY_SHIFT;
-		sa->util_sum = min_t(u64, sa->util_sum, divider << SCHED_CAPACITY_SHIFT);
+		sa->util_sum = min_t(u64, sa->util_sum,
+				     divider << SCHED_CAPACITY_SHIFT);
 	}
 
 	return periods;
@@ -199,9 +202,10 @@ accumulate_sum(u64 delta, struct sched_avg *sa,
  *   load_avg = u_0` + y*(u_0 + u_1*y + u_2*y^2 + ... )
  *            = u_0 + u_1*y + u_2*y^2 + ... [re-labeling u_i --> u_{i+1}]
  */
-static __always_inline int
-___update_load_sum(u64 now, struct sched_avg *sa,
-		  unsigned long load, unsigned long runnable, int running)
+static __always_inline int ___update_load_sum(u64 now, struct sched_avg *sa,
+					      unsigned long load,
+					      unsigned long runnable,
+					      int running)
 {
 	u64 delta;
 
@@ -276,8 +280,8 @@ ___update_load_sum(u64 now, struct sched_avg *sa,
  * the period_contrib of cfs_rq when updating the sched_avg of a sched_entity
  * if it's more convenient.
  */
-static __always_inline void
-___update_load_avg(struct sched_avg *sa, unsigned long load)
+static __always_inline void ___update_load_avg(struct sched_avg *sa,
+					       unsigned long load)
 {
 	u32 divider = get_pelt_divider(sa);
 
@@ -319,18 +323,18 @@ int __update_load_avg_blocked_se(u64 now, struct sched_entity *se)
 {
 	if (___update_load_sum(now, &se->avg, 0, 0, 0)) {
 		___update_load_avg(&se->avg, se_weight(se));
-                trace_sched_load_se(se);
+		trace_sched_load_se(se);
 		return 1;
 	}
 
 	return 0;
 }
 
-int __update_load_avg_se(u64 now, struct cfs_rq *cfs_rq, struct sched_entity *se)
+int __update_load_avg_se(u64 now, struct cfs_rq *cfs_rq,
+			 struct sched_entity *se)
 {
 	if (___update_load_sum(now, &se->avg, !!se->on_rq, se_runnable(se),
-				cfs_rq->curr == se)) {
-
+			       cfs_rq->curr == se)) {
 		___update_load_avg(&se->avg, se_weight(se));
 		cfs_se_util_change(&se->avg);
 
@@ -345,11 +349,9 @@ int __update_load_avg_se(u64 now, struct cfs_rq *cfs_rq, struct sched_entity *se
 int __update_load_avg_cfs_rq(u64 now, struct cfs_rq *cfs_rq)
 {
 	if (___update_load_sum(now, &cfs_rq->avg,
-				scale_load_down(cfs_rq->load.weight),
-				cfs_rq->h_nr_runnable,
-				cfs_rq->curr != NULL)) {
-
-                ___update_load_avg(&cfs_rq->avg, 1);
+			       scale_load_down(cfs_rq->load.weight),
+			       cfs_rq->h_nr_runnable, cfs_rq->curr != NULL)) {
+		___update_load_avg(&cfs_rq->avg, 1);
 
 		trace_sched_load_cfs_rq(cfs_rq);
 
@@ -372,12 +374,8 @@ int __update_load_avg_cfs_rq(u64 now, struct cfs_rq *cfs_rq)
 
 int update_rt_rq_load_avg(u64 now, struct rq *rq, int running)
 {
-	if (___update_load_sum(now, &rq->avg_rt,
-				running,
-				running,
-				running)) {
-
-                ___update_load_avg(&rq->avg_rt, 1);
+	if (___update_load_sum(now, &rq->avg_rt, running, running, running)) {
+		___update_load_avg(&rq->avg_rt, 1);
 
 		trace_sched_load_rt_rq(rq);
 
@@ -400,11 +398,7 @@ int update_rt_rq_load_avg(u64 now, struct rq *rq, int running)
 
 int update_dl_rq_load_avg(u64 now, struct rq *rq, int running)
 {
-	if (___update_load_sum(now, &rq->avg_dl,
-				running,
-				running,
-				running)) {
-
+	if (___update_load_sum(now, &rq->avg_dl, running, running, running)) {
 		___update_load_avg(&rq->avg_dl, 1);
 		return 1;
 	}
@@ -430,9 +424,7 @@ int update_dl_rq_load_avg(u64 now, struct rq *rq, int running)
 
 int update_thermal_load_avg(u64 now, struct rq *rq, u64 capacity)
 {
-	if (___update_load_sum(now, &rq->avg_thermal,
-			       capacity,
-			       capacity,
+	if (___update_load_sum(now, &rq->avg_thermal, capacity, capacity,
 			       capacity)) {
 		___update_load_avg(&rq->avg_thermal, 1);
 		trace_pelt_thermal_tp(rq);
@@ -478,14 +470,8 @@ int update_irq_load_avg(struct rq *rq, u64 running)
 	 * We can safely remove running from rq->clock because
 	 * rq->clock += delta with delta >= running
 	 */
-	ret = ___update_load_sum(rq->clock - running, &rq->avg_irq,
-				0,
-				0,
-				0);
-	ret += ___update_load_sum(rq->clock, &rq->avg_irq,
-				1,
-				1,
-				1);
+	ret = ___update_load_sum(rq->clock - running, &rq->avg_irq, 0, 0, 0);
+	ret += ___update_load_sum(rq->clock, &rq->avg_irq, 1, 1, 1);
 
 	if (ret)
 		___update_load_avg(&rq->avg_irq, 1);

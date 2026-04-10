@@ -524,7 +524,8 @@ long __sys_setreuid(uid_t ruid, uid_t euid)
 	retval = -EPERM;
 	if (ruid != (uid_t)-1) {
 		new->uid = kruid;
-		if (!uid_eq(old->uid, kruid) && !uid_eq(old->euid, kruid) &&
+		if (!uid_eq(old->uid, kruid) &&
+		    !uid_eq(old->euid, kruid) &&
 		    !ns_capable_setid(old->user_ns, CAP_SETUID))
 			goto error;
 	}
@@ -653,8 +654,8 @@ long __sys_setresuid(uid_t ruid, uid_t euid, uid_t suid)
 	old = current_cred();
 
 	retval = -EPERM;
-	if (!ns_capable_setid(old->user_ns, CAP_SETUID)) {
-		if (ruid != (uid_t)-1 && !uid_eq(kruid, old->uid) &&
+	if (!ns_capable(old->user_ns, CAP_SETUID)) {
+		if (ruid != (uid_t) -1        && !uid_eq(kruid, old->uid) &&
 		    !uid_eq(kruid, old->euid) && !uid_eq(kruid, old->suid))
 			goto error;
 		if (euid != (uid_t)-1 && !uid_eq(keuid, old->uid) &&
@@ -1251,22 +1252,10 @@ SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
 {
 	struct new_utsname tmp;
 	uid_t cur_uid = current_uid().val;
+	uid_t cur_uid = current_uid().val;
 
 	down_read(&uts_sem);
 	memcpy(&tmp, utsname(), sizeof(tmp));
-	if (current_uid().val == 0 &&
-	    (!strncmp(current->comm, "bpfloader", 9) ||
-	     !strncmp(current->comm, "netbpfload", 10) ||
-	     !strncmp(current->comm, "netd", 4))) {
-		strcpy(tmp.release, "5.10.248");
-		pr_info("fake uname: %s/%d release=%s\n", current->comm,
-			current->pid, tmp.release);
-	} else if (cur_uid >= 1000) {
-		strlcpy(tmp.release, "5.10.248", sizeof(tmp.release));
-	}
-#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
-	susfs_spoof_uname(&tmp);
-#endif
 	up_read(&uts_sem);
 	if (copy_to_user(name, &tmp, sizeof(tmp)))
 		return -EFAULT;

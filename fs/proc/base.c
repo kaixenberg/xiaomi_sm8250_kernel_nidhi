@@ -154,18 +154,22 @@ struct pid_entry {
 		.op = OP,                                                      \
 	}
 
-#define DIR(NAME, MODE, iops, fops)                                            \
-	NOD(NAME, (S_IFDIR | (MODE)), &iops, &fops, {})
-#define LNK(NAME, get_link)                                                    \
-	NOD(NAME, (S_IFLNK | S_IRWXUGO), &proc_pid_link_inode_operations,      \
-	    NULL, { .proc_get_link = get_link })
-#define REG(NAME, MODE, fops) NOD(NAME, (S_IFREG | (MODE)), NULL, &fops, {})
-#define ONE(NAME, MODE, show)                                                  \
-	NOD(NAME, (S_IFREG | (MODE)), NULL, &proc_single_file_operations,      \
-	    { .proc_show = show })
-#define ATTR(LSM, NAME, MODE)                                                  \
-	NOD(NAME, (S_IFREG | (MODE)), NULL, &proc_pid_attr_operations,         \
-	    { .lsm = LSM })
+#define DIR(NAME, MODE, iops, fops)	\
+	NOD(NAME, (S_IFDIR|(MODE)), &iops, &fops, {} )
+#define LNK(NAME, get_link)					\
+	NOD(NAME, (S_IFLNK|S_IRWXUGO),				\
+		&proc_pid_link_inode_operations, NULL,		\
+		{ .proc_get_link = get_link } )
+#define REG(NAME, MODE, fops)				\
+	NOD(NAME, (S_IFREG|(MODE)), NULL, &fops, {})
+#define ONE(NAME, MODE, show)				\
+	NOD(NAME, (S_IFREG|(MODE)),			\
+		NULL, &proc_single_file_operations,	\
+		{ .proc_show = show } )
+#define ATTR(LSM, NAME, MODE)				\
+	NOD(NAME, (S_IFREG|(MODE)),			\
+		NULL, &proc_pid_attr_operations,	\
+		{ .lsm = LSM })
 
 /*
  * Count the number of hardlinks for the pid_entry table, excluding the .
@@ -2634,7 +2638,7 @@ static ssize_t proc_pid_attr_read(struct file *file, char __user *buf,
 		return -ESRCH;
 
 	length = security_getprocattr(task, PROC_I(inode)->op.lsm,
-				      (char *)file->f_path.dentry->d_name.name,
+				      (char*)file->f_path.dentry->d_name.name,
 				      &p);
 	put_task_struct(task);
 	if (length > 0)
@@ -2709,50 +2713,52 @@ static const struct file_operations proc_pid_attr_operations = {
 	.release = mem_release,
 };
 
-#define LSM_DIR_OPS(LSM)                                                         \
-	static int proc_##LSM##_attr_dir_iterate(struct file *filp,              \
-						 struct dir_context *ctx)        \
-	{                                                                        \
-		return proc_pident_readdir(filp, ctx, LSM##_attr_dir_stuff,      \
-					   ARRAY_SIZE(LSM##_attr_dir_stuff));    \
-	}                                                                        \
-                                                                                 \
-	static const struct file_operations proc_##LSM##_attr_dir_ops = {        \
-		.read = generic_read_dir,                                        \
-		.iterate = proc_##LSM##_attr_dir_iterate,                        \
-		.llseek = default_llseek,                                        \
-	};                                                                       \
-                                                                                 \
-	static struct dentry *proc_##LSM##_attr_dir_lookup(                      \
-		struct inode *dir, struct dentry *dentry, unsigned int flags)    \
-	{                                                                        \
-		return proc_pident_lookup(dir, dentry, LSM##_attr_dir_stuff,     \
-					  ARRAY_SIZE(LSM##_attr_dir_stuff));     \
-	}                                                                        \
-                                                                                 \
-	static const struct inode_operations proc_##LSM##_attr_dir_inode_ops = { \
-		.lookup = proc_##LSM##_attr_dir_lookup,                          \
-		.getattr = pid_getattr,                                          \
-		.setattr = proc_setattr,                                         \
-	}
+#define LSM_DIR_OPS(LSM) \
+static int proc_##LSM##_attr_dir_iterate(struct file *filp, \
+			     struct dir_context *ctx) \
+{ \
+	return proc_pident_readdir(filp, ctx, \
+				   LSM##_attr_dir_stuff, \
+				   ARRAY_SIZE(LSM##_attr_dir_stuff)); \
+} \
+\
+static const struct file_operations proc_##LSM##_attr_dir_ops = { \
+	.read		= generic_read_dir, \
+	.iterate	= proc_##LSM##_attr_dir_iterate, \
+	.llseek		= default_llseek, \
+}; \
+\
+static struct dentry *proc_##LSM##_attr_dir_lookup(struct inode *dir, \
+				struct dentry *dentry, unsigned int flags) \
+{ \
+	return proc_pident_lookup(dir, dentry, \
+				  LSM##_attr_dir_stuff, \
+				  ARRAY_SIZE(LSM##_attr_dir_stuff)); \
+} \
+\
+static const struct inode_operations proc_##LSM##_attr_dir_inode_ops = { \
+	.lookup		= proc_##LSM##_attr_dir_lookup, \
+	.getattr	= pid_getattr, \
+	.setattr	= proc_setattr, \
+}
 
 #ifdef CONFIG_SECURITY_SMACK
 static const struct pid_entry smack_attr_dir_stuff[] = {
-	ATTR("smack", "current", 0666),
+	ATTR("smack", "current",	0666),
 };
 LSM_DIR_OPS(smack);
 #endif
 
 static const struct pid_entry attr_dir_stuff[] = {
-	ATTR(NULL, "current", 0666),
-	ATTR(NULL, "prev", 0444),
-	ATTR(NULL, "exec", 0666),
-	ATTR(NULL, "fscreate", 0666),
-	ATTR(NULL, "keycreate", 0666),
-	ATTR(NULL, "sockcreate", 0666),
+	ATTR(NULL, "current",		0666),
+	ATTR(NULL, "prev",		0444),
+	ATTR(NULL, "exec",		0666),
+	ATTR(NULL, "fscreate",		0666),
+	ATTR(NULL, "keycreate",		0666),
+	ATTR(NULL, "sockcreate",	0666),
 #ifdef CONFIG_SECURITY_SMACK
-	DIR("smack", 0555, proc_smack_attr_dir_inode_ops,
-	    proc_smack_attr_dir_ops),
+	DIR("smack",			0555,
+	    proc_smack_attr_dir_inode_ops, proc_smack_attr_dir_ops),
 #endif
 };
 

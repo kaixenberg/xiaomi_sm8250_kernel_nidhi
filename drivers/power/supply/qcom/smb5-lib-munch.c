@@ -1560,7 +1560,7 @@ static int smblib_notifier_call(struct notifier_block *nb,
 			if (rc < 0) {
 				pr_err("Couldn't get batt verify status rc=%d\n", rc);
 			}
-			chg->batt_verified = pval.intval;
+			chg->batt_verified = 1;
 			pr_err("batt_verified =%d\n", chg->batt_verified);
 			schedule_work(&chg->batt_verify_update_work);
 #endif

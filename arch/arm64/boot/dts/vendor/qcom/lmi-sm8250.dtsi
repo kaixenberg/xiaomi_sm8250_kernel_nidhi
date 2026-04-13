@@ -62,16 +62,16 @@ And public attribution of xiaomi platforms(like J1 and so and)
 		pinctrl-names = "default";
 		pinctrl-0 = <&bq2597x_master_int_default>;
 
-		ti,bq2597x,bat-ovp-disable;
+		/*ti,bq2597x,bat-ovp-disable;*/
 		ti,bq2597x,bat-ovp-alarm-disable;
 		ti,bq2597x,bat-ocp-disable;
 		ti,bq2597x,bat-ocp-alarm-disable;
 		ti,bq2597x,bat-ucp-alarm-disable;
 		ti,bq2597x,bat-ucp-disable;
 
-		ti,bq2597x,bus-ovp-alarm-disable;
+		/*ti,bq2597x,bus-ovp-alarm-disable;
 		ti,bq2597x,bus-ocp-disable;
-		ti,bq2597x,bus-ocp-alarm-disable;
+		ti,bq2597x,bus-ocp-alarm-disable;*/
 		ti,bq2597x,bat-therm-disable;
 		ti,bq2597x,bus-therm-disable;
 		ti,bq2597x,die-therm-disable;
@@ -365,6 +365,7 @@ And public attribution of xiaomi platforms(like J1 and so and)
 		mi,pd-battery-warm-th = <480>;
 		mi,use-qcom-gauge;
 		//mi,cp-sec-enable;
+		mi,pd-power-max = <33>; /*charge power max : 33W */
 	};
 
 	lmi_batterydata: qcom,battery-data {
@@ -395,6 +396,7 @@ And public attribution of xiaomi platforms(like J1 and so and)
 
 &pm8150b_pdphy {
 	mi,non-qcom-pps-ctrl;
+	mi,pd-power-max = <33>; /*charge power max : 33W */
 };
 
 &smb1390 {

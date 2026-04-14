@@ -27,7 +27,15 @@
 
 #ifndef CONFIG_SUSPEND
 suspend_state_t pm_suspend_target_state;
-#define pm_suspend_target_state	(PM_SUSPEND_ON)
+#define pm_suspend_target_state (PM_SUSPEND_ON)
+#endif
+
+#ifdef CONFIG_BOEFFLA_WL_BLOCKER
+#include "boeffla_wl_blocker.h"
+
+char list_wl_search[LENGTH_LIST_WL_SEARCH] = { 0 };
+bool wl_blocker_active = false;
+bool wl_blocker_debug = false;
 #endif
 
 /*
@@ -49,8 +57,8 @@ static atomic_t pm_abort_suspend __read_mostly;
  */
 static atomic_t combined_event_count = ATOMIC_INIT(0);
 
-#define IN_PROGRESS_BITS	(sizeof(int) * 4)
-#define MAX_IN_PROGRESS		((1 << IN_PROGRESS_BITS) - 1)
+#define IN_PROGRESS_BITS (sizeof(int) * 4)
+#define MAX_IN_PROGRESS ((1 << IN_PROGRESS_BITS) - 1)
 
 static void split_counters(unsigned int *cnt, unsigned int *inpr)
 {
@@ -75,7 +83,7 @@ DEFINE_STATIC_SRCU(wakeup_srcu);
 
 static struct wakeup_source deleted_ws = {
 	.name = "deleted",
-	.lock =  __SPIN_LOCK_UNLOCKED(deleted_ws.lock),
+	.lock = __SPIN_LOCK_UNLOCKED(deleted_ws.lock),
 };
 
 static DEFINE_IDA(wakeup_ida);
@@ -127,12 +135,12 @@ static void wakeup_source_record(struct wakeup_source *ws)
 	if (ws->event_count) {
 		deleted_ws.total_time =
 			ktime_add(deleted_ws.total_time, ws->total_time);
-		deleted_ws.prevent_sleep_time =
-			ktime_add(deleted_ws.prevent_sleep_time,
-				  ws->prevent_sleep_time);
+		deleted_ws.prevent_sleep_time = ktime_add(
+			deleted_ws.prevent_sleep_time, ws->prevent_sleep_time);
 		deleted_ws.max_time =
 			ktime_compare(deleted_ws.max_time, ws->max_time) > 0 ?
-				deleted_ws.max_time : ws->max_time;
+				deleted_ws.max_time :
+				ws->max_time;
 		deleted_ws.event_count += ws->event_count;
 		deleted_ws.active_count += ws->active_count;
 		deleted_ws.relax_count += ws->relax_count;
@@ -291,7 +299,8 @@ int device_wakeup_enable(struct device *dev)
 		return -EINVAL;
 
 	if (pm_suspend_target_state != PM_SUSPEND_ON)
-		dev_dbg(dev, "Suspicious %s() during system transition!\n", __func__);
+		dev_dbg(dev, "Suspicious %s() during system transition!\n",
+			__func__);
 
 	ws = wakeup_source_register(dev, dev_name(dev));
 	if (!ws)
@@ -316,8 +325,7 @@ EXPORT_SYMBOL_GPL(device_wakeup_enable);
  *
  * Call under the device's power.lock lock.
  */
-void device_wakeup_attach_irq(struct device *dev,
-			     struct wake_irq *wakeirq)
+void device_wakeup_attach_irq(struct device *dev, struct wake_irq *wakeirq)
 {
 	struct wakeup_source *ws;
 
@@ -359,7 +367,7 @@ void device_wakeup_arm_wake_irqs(void)
 	int srcuidx;
 
 	srcuidx = srcu_read_lock(&wakeup_srcu);
-	list_for_each_entry_rcu(ws, &wakeup_sources, entry)
+	list_for_each_entry_rcu (ws, &wakeup_sources, entry)
 		dev_pm_arm_wake_irq(ws->wakeirq);
 	srcu_read_unlock(&wakeup_srcu, srcuidx);
 }
@@ -375,7 +383,7 @@ void device_wakeup_disarm_wake_irqs(void)
 	int srcuidx;
 
 	srcuidx = srcu_read_lock(&wakeup_srcu);
-	list_for_each_entry_rcu(ws, &wakeup_sources, entry)
+	list_for_each_entry_rcu (ws, &wakeup_sources, entry)
 		dev_pm_disarm_wake_irq(ws->wakeirq);
 	srcu_read_unlock(&wakeup_srcu, srcuidx);
 }
@@ -440,7 +448,8 @@ void device_set_wakeup_capable(struct device *dev, bool capable)
 			int ret = wakeup_sysfs_add(dev);
 
 			if (ret)
-				dev_info(dev, "Wakeup sysfs attributes not added\n");
+				dev_info(dev,
+					 "Wakeup sysfs attributes not added\n");
 		} else {
 			wakeup_sysfs_remove(dev);
 		}
@@ -542,7 +551,7 @@ static void wakeup_source_activate(struct wakeup_source *ws)
 	unsigned int cec;
 
 	if (WARN_ONCE(wakeup_source_not_registered(ws),
-			"unregistered wakeup source\n"))
+		      "unregistered wakeup source\n"))
 		return;
 
 	ws->active = true;
@@ -556,6 +565,55 @@ static void wakeup_source_activate(struct wakeup_source *ws)
 
 	trace_wakeup_source_activate(ws->name, cec);
 }
+
+#ifdef CONFIG_BOEFFLA_WL_BLOCKER
+// AP: Function to check if a wakelock is on the wakelock blocker list
+static bool check_for_block(struct wakeup_source *ws)
+{
+	char wakelock_name[52] = { 0 };
+	int length;
+
+	// if debug mode on, print every wakelock requested
+	if (wl_blocker_debug)
+		printk("Boeffla WL blocker: %s requested\n", ws->name);
+
+	// if there is no list of wakelocks to be blocked, exit without futher checking
+	if (!wl_blocker_active)
+		return false;
+
+	// only if ws structure is valid
+	if (ws) {
+		// wake lock names handled have maximum length=50 and minimum=1
+		length = strlen(ws->name);
+		if ((length > 50) || (length < 1))
+			return false;
+
+		// check if wakelock is in wake lock list to be blocked
+		sprintf(wakelock_name, ";%s;", ws->name);
+
+		if (strstr(list_wl_search, wakelock_name) == NULL)
+			return false;
+		// wake lock is in list, print it if debug mode on
+		if (wl_blocker_debug)
+			printk("Boeffla WL blocker: %s blocked\n", ws->name);
+
+		// if it is currently active, deactivate it immediately + log in debug mode
+		if (ws->active) {
+			wakeup_source_deactivate(ws);
+
+			if (wl_blocker_debug)
+				printk("Boeffla WL blocker: %s killed\n",
+				       ws->name);
+		}
+
+		// finally block it
+		return true;
+	}
+
+	// there was no valid ws structure, do not block by default
+	return false;
+}
+#endif
 
 /**
  * wakeup_source_report_event - Report wakeup event using the given source.
@@ -574,6 +632,21 @@ static void wakeup_source_report_event(struct wakeup_source *ws, bool hard)
 
 	if (hard)
 		pm_system_wakeup();
+#ifdef CONFIG_BOEFFLA_WL_BLOCKER
+	if (!check_for_block(
+		    ws)) // AP: check if wakelock is on wakelock blocker list
+	{
+#endif
+		ws->event_count++;
+		/* This is racy, but the counter is approximate anyway. */
+		if (events_check_enabled)
+			ws->wakeup_count++;
+
+		if (!ws->active)
+			wakeup_source_activate(ws);
+#ifdef CONFIG_BOEFFLA_WL_BLOCKER
+	}
+#endif
 }
 
 /**
@@ -631,7 +704,9 @@ static void update_prevent_sleep_time(struct wakeup_source *ws, ktime_t now)
 }
 #else
 static inline void update_prevent_sleep_time(struct wakeup_source *ws,
-					     ktime_t now) {}
+					     ktime_t now)
+{
+}
 #endif
 
 /**
@@ -747,8 +822,8 @@ static void pm_wakeup_timer_fn(struct timer_list *t)
 
 	spin_lock_irqsave(&ws->lock, flags);
 
-	if (ws->active && ws->timer_expires
-	    && time_after_eq(jiffies, ws->timer_expires)) {
+	if (ws->active && ws->timer_expires &&
+	    time_after_eq(jiffies, ws->timer_expires)) {
 		wakeup_source_deactivate(ws);
 		ws->expire_count++;
 	}
@@ -795,7 +870,7 @@ void pm_wakeup_ws_event(struct wakeup_source *ws, unsigned int msec, bool hard)
 		ws->timer_expires = expires;
 	}
 
- unlock:
+unlock:
 	spin_unlock_irqrestore(&ws->lock, flags);
 }
 EXPORT_SYMBOL_GPL(pm_wakeup_ws_event);
@@ -828,25 +903,25 @@ void pm_get_active_wakeup_sources(char *pending_wakeup_source, size_t max)
 	bool active = false;
 
 	rcu_read_lock();
-	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
+	list_for_each_entry_rcu (ws, &wakeup_sources, entry) {
 		if (ws->active && len < max) {
 			if (!active)
 				len += scnprintf(pending_wakeup_source, max,
-						"Pending Wakeup Sources: ");
+						 "Pending Wakeup Sources: ");
 			len += scnprintf(pending_wakeup_source + len, max - len,
-				"%s ", ws->name);
+					 "%s ", ws->name);
 			active = true;
 		} else if (!active &&
 			   (!last_active_ws ||
 			    ktime_to_ns(ws->last_time) >
-			    ktime_to_ns(last_active_ws->last_time))) {
+				    ktime_to_ns(last_active_ws->last_time))) {
 			last_active_ws = ws;
 		}
 	}
 	if (!active && last_active_ws) {
 		scnprintf(pending_wakeup_source, max,
-				"Last active Wakeup Source: %s",
-				last_active_ws->name);
+			  "Last active Wakeup Source: %s",
+			  last_active_ws->name);
 	}
 	rcu_read_unlock();
 }
@@ -859,21 +934,25 @@ void pm_print_active_wakeup_sources(void)
 	struct wakeup_source *last_activity_ws = NULL;
 
 	srcuidx = srcu_read_lock(&wakeup_srcu);
-	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
+	list_for_each_entry_rcu (ws, &wakeup_sources, entry) {
 		if (ws->active) {
 			pr_debug("active wakeup source: %s\n", ws->name);
-			active = 1;
+#ifdef CONFIG_BOEFFLA_WL_BLOCKER
+			if (!check_for_block(
+				    ws)) // AP: check if wakelock is on wakelock blocker list
+#endif
+				active = 1;
 		} else if (!active &&
 			   (!last_activity_ws ||
 			    ktime_to_ns(ws->last_time) >
-			    ktime_to_ns(last_activity_ws->last_time))) {
+				    ktime_to_ns(last_activity_ws->last_time))) {
 			last_activity_ws = ws;
 		}
 	}
 
 	if (!active && last_activity_ws)
 		pr_debug("last active wakeup source: %s\n",
-			last_activity_ws->name);
+			 last_activity_ws->name);
 	srcu_read_unlock(&wakeup_srcu, srcuidx);
 }
 EXPORT_SYMBOL_GPL(pm_print_active_wakeup_sources);
@@ -1025,7 +1104,7 @@ void pm_wakep_autosleep_enabled(bool set)
 	int srcuidx;
 
 	srcuidx = srcu_read_lock(&wakeup_srcu);
-	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
+	list_for_each_entry_rcu (ws, &wakeup_sources, entry) {
 		spin_lock_irq(&ws->lock);
 		if (ws->autosleep_enabled != set) {
 			ws->autosleep_enabled = set;
@@ -1074,26 +1153,27 @@ static int print_wakeup_source_stats(struct seq_file *m,
 			max_time = active_time;
 
 		if (ws->autosleep_enabled)
-			prevent_sleep_time = ktime_add(prevent_sleep_time,
+			prevent_sleep_time = ktime_add(
+				prevent_sleep_time,
 				ktime_sub(now, ws->start_prevent_time));
 	} else {
 		active_time = 0;
 	}
 
-	seq_printf(m, "%-12s\t%lu\t\t%lu\t\t%lu\t\t%lu\t\t%lld\t\t%lld\t\t%lld\t\t%lld\t\t%lld\n",
-		   ws->name, active_count, ws->event_count,
-		   ws->wakeup_count, ws->expire_count,
-		   ktime_to_ms(active_time), ktime_to_ms(total_time),
-		   ktime_to_ms(max_time), ktime_to_ms(ws->last_time),
-		   ktime_to_ms(prevent_sleep_time));
+	seq_printf(
+		m,
+		"%-12s\t%lu\t\t%lu\t\t%lu\t\t%lu\t\t%lld\t\t%lld\t\t%lld\t\t%lld\t\t%lld\n",
+		ws->name, active_count, ws->event_count, ws->wakeup_count,
+		ws->expire_count, ktime_to_ms(active_time),
+		ktime_to_ms(total_time), ktime_to_ms(max_time),
+		ktime_to_ms(ws->last_time), ktime_to_ms(prevent_sleep_time));
 
 	spin_unlock_irqrestore(&ws->lock, flags);
 
 	return 0;
 }
 
-static void *wakeup_sources_stats_seq_start(struct seq_file *m,
-					loff_t *pos)
+static void *wakeup_sources_stats_seq_start(struct seq_file *m, loff_t *pos)
 {
 	struct wakeup_source *ws;
 	loff_t n = *pos;
@@ -1101,12 +1181,12 @@ static void *wakeup_sources_stats_seq_start(struct seq_file *m,
 
 	if (n == 0) {
 		seq_puts(m, "name\t\tactive_count\tevent_count\twakeup_count\t"
-			"expire_count\tactive_since\ttotal_time\tmax_time\t"
-			"last_change\tprevent_suspend_time\n");
+			    "expire_count\tactive_since\ttotal_time\tmax_time\t"
+			    "last_change\tprevent_suspend_time\n");
 	}
 
 	*srcuidx = srcu_read_lock(&wakeup_srcu);
-	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
+	list_for_each_entry_rcu (ws, &wakeup_sources, entry) {
 		if (n-- <= 0)
 			return ws;
 	}
@@ -1114,15 +1194,15 @@ static void *wakeup_sources_stats_seq_start(struct seq_file *m,
 	return NULL;
 }
 
-static void *wakeup_sources_stats_seq_next(struct seq_file *m,
-					void *v, loff_t *pos)
+static void *wakeup_sources_stats_seq_next(struct seq_file *m, void *v,
+					   loff_t *pos)
 {
 	struct wakeup_source *ws = v;
 	struct wakeup_source *next_ws = NULL;
 
 	++(*pos);
 
-	list_for_each_entry_continue_rcu(ws, &wakeup_sources, entry) {
+	list_for_each_entry_continue_rcu (ws, &wakeup_sources, entry) {
 		next_ws = ws;
 		break;
 	}
@@ -1153,14 +1233,15 @@ static int wakeup_sources_stats_seq_show(struct seq_file *m, void *v)
 
 static const struct seq_operations wakeup_sources_stats_seq_ops = {
 	.start = wakeup_sources_stats_seq_start,
-	.next  = wakeup_sources_stats_seq_next,
-	.stop  = wakeup_sources_stats_seq_stop,
-	.show  = wakeup_sources_stats_seq_show,
+	.next = wakeup_sources_stats_seq_next,
+	.stop = wakeup_sources_stats_seq_stop,
+	.show = wakeup_sources_stats_seq_show,
 };
 
 static int wakeup_sources_stats_open(struct inode *inode, struct file *file)
 {
-	return seq_open_private(file, &wakeup_sources_stats_seq_ops, sizeof(int));
+	return seq_open_private(file, &wakeup_sources_stats_seq_ops,
+				sizeof(int));
 }
 
 static const struct file_operations wakeup_sources_stats_fops = {
@@ -1173,8 +1254,9 @@ static const struct file_operations wakeup_sources_stats_fops = {
 
 static int __init wakeup_sources_debugfs_init(void)
 {
-	wakeup_sources_stats_dentry = debugfs_create_file("wakeup_sources",
-			S_IRUGO, NULL, NULL, &wakeup_sources_stats_fops);
+	wakeup_sources_stats_dentry =
+		debugfs_create_file("wakeup_sources", S_IRUGO, NULL, NULL,
+				    &wakeup_sources_stats_fops);
 	return 0;
 }
 

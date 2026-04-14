@@ -34,28 +34,36 @@
 #include "avc_ss.h"
 #include "classmap.h"
 
-#define AVC_CACHE_SLOTS			512
-#define AVC_DEF_CACHE_THRESHOLD		512
-#define AVC_CACHE_RECLAIM		16
+#define AVC_CACHE_SLOTS 512
+#define AVC_DEF_CACHE_THRESHOLD 512
+#define AVC_CACHE_RECLAIM 16
 
 #ifdef CONFIG_SECURITY_SELINUX_AVC_STATS
-#define avc_cache_stats_incr(field)	this_cpu_inc(avc_cache_stats.field)
+#define avc_cache_stats_incr(field) this_cpu_inc(avc_cache_stats.field)
 #else
-#define avc_cache_stats_incr(field)	do {} while (0)
+#define avc_cache_stats_incr(field)                                            \
+	do {                                                                   \
+	} while (0)
+#endif
+
+#ifdef CONFIG_KSU_SUSFS
+extern u32 susfs_ksu_sid;
+extern u32 susfs_priv_app_sid;
+bool susfs_is_avc_log_spoofing_enabled = false;
 #endif
 
 struct avc_entry {
-	u32			ssid;
-	u32			tsid;
-	u16			tclass;
-	struct av_decision	avd;
-	struct avc_xperms_node	*xp_node;
+	u32 ssid;
+	u32 tsid;
+	u16 tclass;
+	struct av_decision avd;
+	struct avc_xperms_node *xp_node;
 };
 
 struct avc_node {
-	struct avc_entry	ae;
-	struct hlist_node	list; /* anchored in avc_cache->slots[i] */
-	struct rcu_head		rhead;
+	struct avc_entry ae;
+	struct hlist_node list; /* anchored in avc_cache->slots[i] */
+	struct rcu_head rhead;
 };
 
 struct avc_xperms_decision_node {
@@ -69,15 +77,15 @@ struct avc_xperms_node {
 };
 
 struct avc_cache {
-	struct hlist_head	slots[AVC_CACHE_SLOTS]; /* head for avc_node->list */
-	spinlock_t		slots_lock[AVC_CACHE_SLOTS]; /* lock for writes */
-	atomic_t		lru_hint;	/* LRU hint for reclaim scan */
-	atomic_t		active_nodes;
-	u32			latest_notif;	/* latest revocation notification */
+	struct hlist_head slots[AVC_CACHE_SLOTS]; /* head for avc_node->list */
+	spinlock_t slots_lock[AVC_CACHE_SLOTS]; /* lock for writes */
+	atomic_t lru_hint; /* LRU hint for reclaim scan */
+	atomic_t active_nodes;
+	u32 latest_notif; /* latest revocation notification */
 };
 
 struct avc_callback_node {
-	int (*callback) (u32 event);
+	int (*callback)(u32 event);
 	u32 events;
 	struct avc_callback_node *next;
 };
@@ -126,7 +134,7 @@ static struct kmem_cache *avc_xperms_cachep;
 
 static inline int avc_hash(u32 ssid, u32 tsid, u16 tclass)
 {
-	return (ssid ^ (tsid<<2) ^ (tclass<<4)) & (AVC_CACHE_SLOTS - 1);
+	return (ssid ^ (tsid << 2) ^ (tclass << 4)) & (AVC_CACHE_SLOTS - 1);
 }
 
 /**
@@ -145,7 +153,7 @@ static void avc_dump_av(struct audit_buffer *ab, u16 tclass, u32 av)
 	}
 
 	BUG_ON(!tclass || tclass >= ARRAY_SIZE(secclass_map));
-	perms = secclass_map[tclass-1].perms;
+	perms = secclass_map[tclass - 1].perms;
 
 	audit_log_format(ab, " {");
 	i = 0;
@@ -187,15 +195,28 @@ static void avc_dump_query(struct audit_buffer *ab, struct selinux_state *state,
 	}
 
 	rc = security_sid_to_context(state, tsid, &scontext, &scontext_len);
+#ifdef CONFIG_KSU_SUSFS
+	if (unlikely(tsid == susfs_ksu_sid &&
+		     susfs_is_avc_log_spoofing_enabled)) {
+		if (rc)
+			audit_log_format(ab, " tsid=%d", susfs_priv_app_sid);
+		else
+			audit_log_format(ab, " tcontext=%s",
+					 "u:r:priv_app:s0:c512,c768");
+		goto bypass_orig_flow;
+	}
+#endif
 	if (rc)
 		audit_log_format(ab, " tsid=%d", tsid);
 	else {
 		audit_log_format(ab, " tcontext=%s", scontext);
 		kfree(scontext);
 	}
-
+#ifdef CONFIG_KSU_SUSFS
+bypass_orig_flow:
+#endif
 	BUG_ON(!tclass || tclass >= ARRAY_SIZE(secclass_map));
-	audit_log_format(ab, " tclass=%s", secclass_map[tclass-1].name);
+	audit_log_format(ab, " tclass=%s", secclass_map[tclass - 1].name);
 }
 
 /**
@@ -206,17 +227,18 @@ static void avc_dump_query(struct audit_buffer *ab, struct selinux_state *state,
 void __init avc_init(void)
 {
 	avc_node_cachep = kmem_cache_create("avc_node", sizeof(struct avc_node),
-					0, SLAB_PANIC, NULL);
+					    0, SLAB_PANIC, NULL);
 	avc_xperms_cachep = kmem_cache_create("avc_xperms_node",
-					sizeof(struct avc_xperms_node),
-					0, SLAB_PANIC, NULL);
-	avc_xperms_decision_cachep = kmem_cache_create(
-					"avc_xperms_decision_node",
-					sizeof(struct avc_xperms_decision_node),
-					0, SLAB_PANIC, NULL);
-	avc_xperms_data_cachep = kmem_cache_create("avc_xperms_data",
-					sizeof(struct extended_perms_data),
-					0, SLAB_PANIC, NULL);
+					      sizeof(struct avc_xperms_node), 0,
+					      SLAB_PANIC, NULL);
+	avc_xperms_decision_cachep =
+		kmem_cache_create("avc_xperms_decision_node",
+				  sizeof(struct avc_xperms_decision_node), 0,
+				  SLAB_PANIC, NULL);
+	avc_xperms_data_cachep =
+		kmem_cache_create("avc_xperms_data",
+				  sizeof(struct extended_perms_data), 0,
+				  SLAB_PANIC, NULL);
 }
 
 int avc_get_hash_stats(struct selinux_avc *avc, char *page)
@@ -234,7 +256,7 @@ int avc_get_hash_stats(struct selinux_avc *avc, char *page)
 		if (!hlist_empty(head)) {
 			slots_used++;
 			chain_len = 0;
-			hlist_for_each_entry_rcu(node, head, list)
+			hlist_for_each_entry_rcu (node, head, list)
 				chain_len++;
 			if (chain_len > max_chain_len)
 				max_chain_len = chain_len;
@@ -243,22 +265,23 @@ int avc_get_hash_stats(struct selinux_avc *avc, char *page)
 
 	rcu_read_unlock();
 
-	return scnprintf(page, PAGE_SIZE, "entries: %d\nbuckets used: %d/%d\n"
+	return scnprintf(page, PAGE_SIZE,
+			 "entries: %d\nbuckets used: %d/%d\n"
 			 "longest chain: %d\n",
-			 atomic_read(&avc->avc_cache.active_nodes),
-			 slots_used, AVC_CACHE_SLOTS, max_chain_len);
+			 atomic_read(&avc->avc_cache.active_nodes), slots_used,
+			 AVC_CACHE_SLOTS, max_chain_len);
 }
 
 /*
  * using a linked list for extended_perms_decision lookup because the list is
  * always small. i.e. less than 5, typically 1
  */
-static struct extended_perms_decision *avc_xperms_decision_lookup(u8 driver,
-					struct avc_xperms_node *xp_node)
+static struct extended_perms_decision *
+avc_xperms_decision_lookup(u8 driver, struct avc_xperms_node *xp_node)
 {
 	struct avc_xperms_decision_node *xpd_node;
 
-	list_for_each_entry(xpd_node, &xp_node->xpd_head, xpd_list) {
+	list_for_each_entry (xpd_node, &xp_node->xpd_head, xpd_list) {
 		if (xpd_node->xpd.driver == driver)
 			return &xpd_node->xpd;
 	}
@@ -266,25 +289,22 @@ static struct extended_perms_decision *avc_xperms_decision_lookup(u8 driver,
 }
 
 static inline unsigned int
-avc_xperms_has_perm(struct extended_perms_decision *xpd,
-					u8 perm, u8 which)
+avc_xperms_has_perm(struct extended_perms_decision *xpd, u8 perm, u8 which)
 {
 	unsigned int rc = 0;
 
-	if ((which == XPERMS_ALLOWED) &&
-			(xpd->used & XPERMS_ALLOWED))
+	if ((which == XPERMS_ALLOWED) && (xpd->used & XPERMS_ALLOWED))
 		rc = security_xperm_test(xpd->allowed->p, perm);
 	else if ((which == XPERMS_AUDITALLOW) &&
-			(xpd->used & XPERMS_AUDITALLOW))
+		 (xpd->used & XPERMS_AUDITALLOW))
 		rc = security_xperm_test(xpd->auditallow->p, perm);
-	else if ((which == XPERMS_DONTAUDIT) &&
-			(xpd->used & XPERMS_DONTAUDIT))
+	else if ((which == XPERMS_DONTAUDIT) && (xpd->used & XPERMS_DONTAUDIT))
 		rc = security_xperm_test(xpd->dontaudit->p, perm);
 	return rc;
 }
 
-static void avc_xperms_allow_perm(struct avc_xperms_node *xp_node,
-				u8 driver, u8 perm)
+static void avc_xperms_allow_perm(struct avc_xperms_node *xp_node, u8 driver,
+				  u8 perm)
 {
 	struct extended_perms_decision *xpd;
 	security_xperm_set(xp_node->xp.drivers.p, driver);
@@ -314,7 +334,7 @@ static void avc_xperms_free(struct avc_xperms_node *xp_node)
 	if (!xp_node)
 		return;
 
-	list_for_each_entry_safe(xpd_node, tmp, &xp_node->xpd_head, xpd_list) {
+	list_for_each_entry_safe (xpd_node, tmp, &xp_node->xpd_head, xpd_list) {
 		list_del(&xpd_node->xpd_list);
 		avc_xperms_decision_free(xpd_node);
 	}
@@ -322,28 +342,28 @@ static void avc_xperms_free(struct avc_xperms_node *xp_node)
 }
 
 static void avc_copy_xperms_decision(struct extended_perms_decision *dest,
-					struct extended_perms_decision *src)
+				     struct extended_perms_decision *src)
 {
 	dest->driver = src->driver;
 	dest->used = src->used;
 	if (dest->used & XPERMS_ALLOWED)
 		memcpy(dest->allowed->p, src->allowed->p,
-				sizeof(src->allowed->p));
+		       sizeof(src->allowed->p));
 	if (dest->used & XPERMS_AUDITALLOW)
 		memcpy(dest->auditallow->p, src->auditallow->p,
-				sizeof(src->auditallow->p));
+		       sizeof(src->auditallow->p));
 	if (dest->used & XPERMS_DONTAUDIT)
 		memcpy(dest->dontaudit->p, src->dontaudit->p,
-				sizeof(src->dontaudit->p));
+		       sizeof(src->dontaudit->p));
 }
 
 /*
  * similar to avc_copy_xperms_decision, but only copy decision
  * information relevant to this perm
  */
-static inline void avc_quick_copy_xperms_decision(u8 perm,
-			struct extended_perms_decision *dest,
-			struct extended_perms_decision *src)
+static inline void
+avc_quick_copy_xperms_decision(u8 perm, struct extended_perms_decision *dest,
+			       struct extended_perms_decision *src)
 {
 	/*
 	 * compute index of the u32 of the 256 bits (8 u32s) that contain this
@@ -360,8 +380,7 @@ static inline void avc_quick_copy_xperms_decision(u8 perm,
 		dest->dontaudit->p[i] = src->dontaudit->p[i];
 }
 
-static struct avc_xperms_decision_node
-		*avc_xperms_decision_alloc(u8 which)
+static struct avc_xperms_decision_node *avc_xperms_decision_alloc(u8 which)
 {
 	struct avc_xperms_decision_node *xpd_node;
 	struct extended_perms_decision *xpd;
@@ -374,19 +393,19 @@ static struct avc_xperms_decision_node
 	xpd = &xpd_node->xpd;
 	if (which & XPERMS_ALLOWED) {
 		xpd->allowed = kmem_cache_zalloc(avc_xperms_data_cachep,
-						GFP_NOWAIT | __GFP_NOWARN);
+						 GFP_NOWAIT | __GFP_NOWARN);
 		if (!xpd->allowed)
 			goto error;
 	}
 	if (which & XPERMS_AUDITALLOW) {
 		xpd->auditallow = kmem_cache_zalloc(avc_xperms_data_cachep,
-						GFP_NOWAIT | __GFP_NOWARN);
+						    GFP_NOWAIT | __GFP_NOWARN);
 		if (!xpd->auditallow)
 			goto error;
 	}
 	if (which & XPERMS_DONTAUDIT) {
 		xpd->dontaudit = kmem_cache_zalloc(avc_xperms_data_cachep,
-						GFP_NOWAIT | __GFP_NOWARN);
+						   GFP_NOWAIT | __GFP_NOWARN);
 		if (!xpd->dontaudit)
 			goto error;
 	}
@@ -397,7 +416,7 @@ error:
 }
 
 static int avc_add_xperms_decision(struct avc_node *node,
-			struct extended_perms_decision *src)
+				   struct extended_perms_decision *src)
 {
 	struct avc_xperms_decision_node *dest_xpd;
 
@@ -414,7 +433,8 @@ static struct avc_xperms_node *avc_xperms_alloc(void)
 {
 	struct avc_xperms_node *xp_node;
 
-	xp_node = kmem_cache_zalloc(avc_xperms_cachep, GFP_NOWAIT | __GFP_NOWARN);
+	xp_node =
+		kmem_cache_zalloc(avc_xperms_cachep, GFP_NOWAIT | __GFP_NOWARN);
 	if (!xp_node)
 		return xp_node;
 	INIT_LIST_HEAD(&xp_node->xpd_head);
@@ -422,7 +442,7 @@ static struct avc_xperms_node *avc_xperms_alloc(void)
 }
 
 static int avc_xperms_populate(struct avc_node *node,
-				struct avc_xperms_node *src)
+			       struct avc_xperms_node *src)
 {
 	struct avc_xperms_node *dest;
 	struct avc_xperms_decision_node *dest_xpd;
@@ -434,11 +454,12 @@ static int avc_xperms_populate(struct avc_node *node,
 	if (!dest)
 		return -ENOMEM;
 
-	memcpy(dest->xp.drivers.p, src->xp.drivers.p, sizeof(dest->xp.drivers.p));
+	memcpy(dest->xp.drivers.p, src->xp.drivers.p,
+	       sizeof(dest->xp.drivers.p));
 	dest->xp.len = src->xp.len;
 
 	/* for each source xpd allocate a destination xpd and copy */
-	list_for_each_entry(src_xpd, &src->xpd_head, xpd_list) {
+	list_for_each_entry (src_xpd, &src->xpd_head, xpd_list) {
 		dest_xpd = avc_xperms_decision_alloc(src_xpd->xpd.used);
 		if (!dest_xpd)
 			goto error;
@@ -450,15 +471,12 @@ static int avc_xperms_populate(struct avc_node *node,
 error:
 	avc_xperms_free(dest);
 	return -ENOMEM;
-
 }
 
 static inline u32 avc_xperms_audit_required(u32 requested,
-					struct av_decision *avd,
-					struct extended_perms_decision *xpd,
-					u8 perm,
-					int result,
-					u32 *deniedp)
+					    struct av_decision *avd,
+					    struct extended_perms_decision *xpd,
+					    u8 perm, int result, u32 *deniedp)
 {
 	u32 denied, audited;
 
@@ -483,21 +501,20 @@ static inline u32 avc_xperms_audit_required(u32 requested,
 	return audited;
 }
 
-static inline int avc_xperms_audit(struct selinux_state *state,
-				   u32 ssid, u32 tsid, u16 tclass,
-				   u32 requested, struct av_decision *avd,
-				   struct extended_perms_decision *xpd,
-				   u8 perm, int result,
-				   struct common_audit_data *ad)
+static inline int avc_xperms_audit(struct selinux_state *state, u32 ssid,
+				   u32 tsid, u16 tclass, u32 requested,
+				   struct av_decision *avd,
+				   struct extended_perms_decision *xpd, u8 perm,
+				   int result, struct common_audit_data *ad)
 {
 	u32 audited, denied;
 
-	audited = avc_xperms_audit_required(
-			requested, avd, xpd, perm, result, &denied);
+	audited = avc_xperms_audit_required(requested, avd, xpd, perm, result,
+					    &denied);
 	if (likely(!audited))
 		return 0;
-	return slow_avc_audit(state, ssid, tsid, tclass, requested,
-			audited, denied, result, ad);
+	return slow_avc_audit(state, ssid, tsid, tclass, requested, audited,
+			      denied, result, ad);
 }
 
 static void avc_node_free(struct rcu_head *rhead)
@@ -523,8 +540,8 @@ static void avc_node_kill(struct selinux_avc *avc, struct avc_node *node)
 	atomic_dec(&avc->avc_cache.active_nodes);
 }
 
-static void avc_node_replace(struct selinux_avc *avc,
-			     struct avc_node *new, struct avc_node *old)
+static void avc_node_replace(struct selinux_avc *avc, struct avc_node *new,
+			     struct avc_node *old)
 {
 	hlist_replace_rcu(&old->list, &new->list);
 	call_rcu(&old->rhead, avc_node_free);
@@ -541,7 +558,7 @@ static inline int avc_reclaim_node(struct selinux_avc *avc)
 
 	for (try = 0, ecx = 0; try < AVC_CACHE_SLOTS; try++) {
 		hvalue = atomic_inc_return(&avc->avc_cache.lru_hint) &
-			(AVC_CACHE_SLOTS - 1);
+			 (AVC_CACHE_SLOTS - 1);
 		head = &avc->avc_cache.slots[hvalue];
 		lock = &avc->avc_cache.slots_lock[hvalue];
 
@@ -549,7 +566,7 @@ static inline int avc_reclaim_node(struct selinux_avc *avc)
 			continue;
 
 		rcu_read_lock();
-		hlist_for_each_entry(node, head, list) {
+		hlist_for_each_entry (node, head, list) {
 			avc_node_delete(avc, node);
 			avc_cache_stats_incr(reclaims);
 			ecx++;
@@ -585,7 +602,8 @@ out:
 	return node;
 }
 
-static void avc_node_populate(struct avc_node *node, u32 ssid, u32 tsid, u16 tclass, struct av_decision *avd)
+static void avc_node_populate(struct avc_node *node, u32 ssid, u32 tsid,
+			      u16 tclass, struct av_decision *avd)
 {
 	node->ae.ssid = ssid;
 	node->ae.tsid = tsid;
@@ -602,9 +620,8 @@ static inline struct avc_node *avc_search_node(struct selinux_avc *avc,
 
 	hvalue = avc_hash(ssid, tsid, tclass);
 	head = &avc->avc_cache.slots[hvalue];
-	hlist_for_each_entry_rcu(node, head, list) {
-		if (ssid == node->ae.ssid &&
-		    tclass == node->ae.tclass &&
+	hlist_for_each_entry_rcu (node, head, list) {
+		if (ssid == node->ae.ssid && tclass == node->ae.tclass &&
 		    tsid == node->ae.tsid) {
 			ret = node;
 			break;
@@ -626,8 +643,8 @@ static inline struct avc_node *avc_search_node(struct selinux_avc *avc,
  * then this function returns the avc_node.
  * Otherwise, this function returns NULL.
  */
-static struct avc_node *avc_lookup(struct selinux_avc *avc,
-				   u32 ssid, u32 tsid, u16 tclass)
+static struct avc_node *avc_lookup(struct selinux_avc *avc, u32 ssid, u32 tsid,
+				   u16 tclass)
 {
 	struct avc_node *node;
 
@@ -641,8 +658,8 @@ static struct avc_node *avc_lookup(struct selinux_avc *avc,
 	return NULL;
 }
 
-static int avc_latest_notif_update(struct selinux_avc *avc,
-				   int seqno, int is_insert)
+static int avc_latest_notif_update(struct selinux_avc *avc, int seqno,
+				   int is_insert)
 {
 	int ret = 0;
 	static DEFINE_SPINLOCK(notif_lock);
@@ -652,7 +669,7 @@ static int avc_latest_notif_update(struct selinux_avc *avc,
 	if (is_insert) {
 		if (seqno < avc->avc_cache.latest_notif) {
 			pr_warn("SELinux: avc:  seqno %d < latest_notif %d\n",
-			       seqno, avc->avc_cache.latest_notif);
+				seqno, avc->avc_cache.latest_notif);
 			ret = -EAGAIN;
 		}
 	} else {
@@ -682,9 +699,8 @@ static int avc_latest_notif_update(struct selinux_avc *avc,
  * the access vectors into a cache entry, returns
  * avc_node inserted. Otherwise, this function returns NULL.
  */
-static struct avc_node *avc_insert(struct selinux_avc *avc,
-				   u32 ssid, u32 tsid, u16 tclass,
-				   struct av_decision *avd,
+static struct avc_node *avc_insert(struct selinux_avc *avc, u32 ssid, u32 tsid,
+				   u16 tclass, struct av_decision *avd,
 				   struct avc_xperms_node *xp_node)
 {
 	struct avc_node *pos, *node = NULL;
@@ -710,9 +726,8 @@ static struct avc_node *avc_insert(struct selinux_avc *avc,
 	head = &avc->avc_cache.slots[hvalue];
 	lock = &avc->avc_cache.slots_lock[hvalue];
 	spin_lock_irqsave(lock, flag);
-	hlist_for_each_entry(pos, head, list) {
-		if (pos->ae.ssid == ssid &&
-		    pos->ae.tsid == tsid &&
+	hlist_for_each_entry (pos, head, list) {
+		if (pos->ae.ssid == ssid && pos->ae.tsid == tsid &&
 		    pos->ae.tclass == tclass) {
 			avc_node_replace(avc, node, pos);
 			goto found;
@@ -736,7 +751,7 @@ static void avc_audit_pre_callback(struct audit_buffer *ab, void *a)
 	struct common_audit_data *ad = a;
 	audit_log_format(ab, "avc:  denied ");
 	avc_dump_av(ab, ad->selinux_audit_data->tclass,
-			ad->selinux_audit_data->audited);
+		    ad->selinux_audit_data->audited);
 	audit_log_format(ab, " for ");
 }
 
@@ -759,10 +774,9 @@ static void avc_audit_post_callback(struct audit_buffer *ab, void *a)
 }
 
 /* This is the slow part of avc audit with big stack footprint */
-noinline int slow_avc_audit(struct selinux_state *state,
-			    u32 ssid, u32 tsid, u16 tclass,
-			    u32 requested, u32 audited, u32 denied, int result,
-			    struct common_audit_data *a)
+noinline int slow_avc_audit(struct selinux_state *state, u32 ssid, u32 tsid,
+			    u16 tclass, u32 requested, u32 audited, u32 denied,
+			    int result, struct common_audit_data *a)
 {
 	struct common_audit_data stack_data;
 	struct selinux_audit_data sad;
@@ -831,10 +845,9 @@ out:
  * otherwise, this function updates the AVC entry. The original AVC-entry object
  * will release later by RCU.
  */
-static int avc_update_node(struct selinux_avc *avc,
-			   u32 event, u32 perms, u8 driver, u8 xperm, u32 ssid,
-			   u32 tsid, u16 tclass, u32 seqno,
-			   struct extended_perms_decision *xpd,
+static int avc_update_node(struct selinux_avc *avc, u32 event, u32 perms,
+			   u8 driver, u8 xperm, u32 ssid, u32 tsid, u16 tclass,
+			   u32 seqno, struct extended_perms_decision *xpd,
 			   u32 flags)
 {
 	int hvalue, rc = 0;
@@ -872,11 +885,9 @@ static int avc_update_node(struct selinux_avc *avc,
 
 	spin_lock_irqsave(lock, flag);
 
-	hlist_for_each_entry(pos, head, list) {
-		if (ssid == pos->ae.ssid &&
-		    tsid == pos->ae.tsid &&
-		    tclass == pos->ae.tclass &&
-		    seqno == pos->ae.avd.seqno){
+	hlist_for_each_entry (pos, head, list) {
+		if (ssid == pos->ae.ssid && tsid == pos->ae.tsid &&
+		    tclass == pos->ae.tclass && seqno == pos->ae.avd.seqno) {
 			orig = pos;
 			break;
 		}
@@ -956,7 +967,7 @@ static void avc_flush(struct selinux_avc *avc)
 		 * prevent RCU grace periods from ending.
 		 */
 		rcu_read_lock();
-		hlist_for_each_entry(node, head, list)
+		hlist_for_each_entry (node, head, list)
 			avc_node_delete(avc, node);
 		rcu_read_unlock();
 		spin_unlock_irqrestore(lock, flag);
@@ -997,11 +1008,10 @@ int avc_ss_reset(struct selinux_avc *avc, u32 seqno)
  * Don't inline this, since it's the slow-path and just
  * results in a bigger stack frame.
  */
-static noinline
-struct avc_node *avc_compute_av(struct selinux_state *state,
-				u32 ssid, u32 tsid,
-				u16 tclass, struct av_decision *avd,
-				struct avc_xperms_node *xp_node)
+static noinline struct avc_node *avc_compute_av(struct selinux_state *state,
+						u32 ssid, u32 tsid, u16 tclass,
+						struct av_decision *avd,
+						struct avc_xperms_node *xp_node)
 {
 	rcu_read_unlock();
 	INIT_LIST_HEAD(&xp_node->xpd_head);
@@ -1010,17 +1020,14 @@ struct avc_node *avc_compute_av(struct selinux_state *state,
 	return avc_insert(state->avc, ssid, tsid, tclass, avd, xp_node);
 }
 
-static noinline int avc_denied(struct selinux_state *state,
-			       u32 ssid, u32 tsid,
-			       u16 tclass, u32 requested,
-			       u8 driver, u8 xperm, unsigned int flags,
-			       struct av_decision *avd)
+static noinline int avc_denied(struct selinux_state *state, u32 ssid, u32 tsid,
+			       u16 tclass, u32 requested, u8 driver, u8 xperm,
+			       unsigned int flags, struct av_decision *avd)
 {
 	if (flags & AVC_STRICT)
 		return -EACCES;
 
-	if (enforcing_enabled(state) &&
-	    !(avd->flags & AVD_FLAGS_PERMISSIVE))
+	if (enforcing_enabled(state) && !(avd->flags & AVD_FLAGS_PERMISSIVE))
 		return -EACCES;
 
 	avc_update_node(state->avc, AVC_CALLBACK_GRANT, requested, driver,
@@ -1035,9 +1042,9 @@ static noinline int avc_denied(struct selinux_state *state,
  * as-is the case with ioctls, then multiple may be chained together and the
  * driver field is used to specify which set contains the permission.
  */
-int avc_has_extended_perms(struct selinux_state *state,
-			   u32 ssid, u32 tsid, u16 tclass, u32 requested,
-			   u8 driver, u8 xperm, struct common_audit_data *ad)
+int avc_has_extended_perms(struct selinux_state *state, u32 ssid, u32 tsid,
+			   u16 tclass, u32 requested, u8 driver, u8 xperm,
+			   struct common_audit_data *ad)
 {
 	struct avc_node *node;
 	struct av_decision avd;
@@ -1099,13 +1106,13 @@ int avc_has_extended_perms(struct selinux_state *state,
 decision:
 	denied = requested & ~(avd.allowed);
 	if (unlikely(denied))
-		rc = avc_denied(state, ssid, tsid, tclass, requested,
-				driver, xperm, AVC_EXTENDED_PERMS, &avd);
+		rc = avc_denied(state, ssid, tsid, tclass, requested, driver,
+				xperm, AVC_EXTENDED_PERMS, &avd);
 
 	rcu_read_unlock();
 
-	rc2 = avc_xperms_audit(state, ssid, tsid, tclass, requested,
-			&avd, xpd, xperm, rc, ad);
+	rc2 = avc_xperms_audit(state, ssid, tsid, tclass, requested, &avd, xpd,
+			       xperm, rc, ad);
 	if (rc2)
 		return rc2;
 	return rc;
@@ -1131,10 +1138,8 @@ decision:
  * auditing, e.g. in cases where a lock must be held for the check but
  * should be released for the auditing.
  */
-inline int avc_has_perm_noaudit(struct selinux_state *state,
-				u32 ssid, u32 tsid,
-				u16 tclass, u32 requested,
-				unsigned int flags,
+inline int avc_has_perm_noaudit(struct selinux_state *state, u32 ssid, u32 tsid,
+				u16 tclass, u32 requested, unsigned int flags,
 				struct av_decision *avd)
 {
 	struct avc_node *node;
@@ -1193,10 +1198,9 @@ int avc_has_perm(struct selinux_state *state, u32 ssid, u32 tsid, u16 tclass,
 	return rc;
 }
 
-int avc_has_perm_flags(struct selinux_state *state,
-		       u32 ssid, u32 tsid, u16 tclass, u32 requested,
-		       struct common_audit_data *auditdata,
-		       int flags)
+int avc_has_perm_flags(struct selinux_state *state, u32 ssid, u32 tsid,
+		       u16 tclass, u32 requested,
+		       struct common_audit_data *auditdata, int flags)
 {
 	struct av_decision avd;
 	int rc, rc2;

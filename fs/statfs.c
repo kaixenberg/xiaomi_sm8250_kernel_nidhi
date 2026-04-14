@@ -9,6 +9,10 @@
 #include <linux/security.h>
 #include <linux/uaccess.h>
 #include <linux/compat.h>
+#if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) ||                                     \
+	defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)
+#include <linux/susfs_def.h>
+#endif
 #include "internal.h"
 
 static int flags_by_mnt(int mnt_flags)
@@ -47,7 +51,7 @@ static int flags_by_sb(int s_flags)
 static int calculate_f_flags(struct vfsmount *mnt)
 {
 	return ST_VALID | flags_by_mnt(mnt->mnt_flags) |
-		flags_by_sb(mnt->mnt_sb->s_flags);
+	       flags_by_sb(mnt->mnt_sb->s_flags);
 }
 
 static int statfs_by_dentry(struct dentry *dentry, struct kstatfs *buf)
@@ -67,10 +71,53 @@ static int statfs_by_dentry(struct dentry *dentry, struct kstatfs *buf)
 	return retval;
 }
 
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+extern struct vfsmount *
+susfs_get_non_sus_vfsmnt_from_vfsmnt(struct vfsmount *vfsmnt);
+#endif //#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+extern int susfs_open_redirect_spoof_vfs_statfs(struct inode *inode,
+						struct kstatfs *buf);
+#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+
 int vfs_statfs(const struct path *path, struct kstatfs *buf)
 {
 	int error;
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	struct vfsmount *no_sus_vfsmnt = NULL;
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+	struct inode *inode = path->dentry->d_inode;
 
+	if (SUSFS_IS_INODE_OPEN_REDIRECT(inode)) {
+		if (susfs_open_redirect_spoof_vfs_statfs(inode, buf))
+			goto orig_flow;
+		return 0;
+	}
+#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	if (likely(susfs_is_current_proc_umounted() && path->mnt)) {
+		no_sus_vfsmnt = susfs_get_non_sus_vfsmnt_from_vfsmnt(path->mnt);
+		if (path->mnt == no_sus_vfsmnt) {
+			dput(no_sus_vfsmnt->mnt_root);
+			mntput(no_sus_vfsmnt);
+			goto orig_flow;
+		}
+		error = statfs_by_dentry(no_sus_vfsmnt->mnt_root, buf);
+		if (!error)
+			buf->f_flags = calculate_f_flags(no_sus_vfsmnt);
+		dput(no_sus_vfsmnt->mnt_root);
+		mntput(no_sus_vfsmnt);
+		return error;
+	}
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+
+#if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) ||                                     \
+	defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)
+orig_flow:
+#endif // #if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)
 	error = statfs_by_dentry(path->dentry, buf);
 	if (!error)
 		buf->f_flags = calculate_f_flags(path->mnt);
@@ -82,7 +129,7 @@ int user_statfs(const char __user *pathname, struct kstatfs *st)
 {
 	struct path path;
 	int error;
-	unsigned int lookup_flags = LOOKUP_FOLLOW|LOOKUP_AUTOMOUNT;
+	unsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;
 retry:
 	error = user_path_at(AT_FDCWD, pathname, lookup_flags, &path);
 	if (!error) {
@@ -173,7 +220,8 @@ static int do_statfs64(struct kstatfs *st, struct statfs64 __user *p)
 	return 0;
 }
 
-SYSCALL_DEFINE2(statfs, const char __user *, pathname, struct statfs __user *, buf)
+SYSCALL_DEFINE2(statfs, const char __user *, pathname, struct statfs __user *,
+		buf)
 {
 	struct kstatfs st;
 	int error = user_statfs(pathname, &st);
@@ -182,7 +230,8 @@ SYSCALL_DEFINE2(statfs, const char __user *, pathname, struct statfs __user *, b
 	return error;
 }
 
-SYSCALL_DEFINE3(statfs64, const char __user *, pathname, size_t, sz, struct statfs64 __user *, buf)
+SYSCALL_DEFINE3(statfs64, const char __user *, pathname, size_t, sz,
+		struct statfs64 __user *, buf)
 {
 	struct kstatfs st;
 	int error;
@@ -203,7 +252,8 @@ SYSCALL_DEFINE2(fstatfs, unsigned int, fd, struct statfs __user *, buf)
 	return error;
 }
 
-SYSCALL_DEFINE3(fstatfs64, unsigned int, fd, size_t, sz, struct statfs64 __user *, buf)
+SYSCALL_DEFINE3(fstatfs64, unsigned int, fd, size_t, sz,
+		struct statfs64 __user *, buf)
 {
 	struct kstatfs st;
 	int error;
@@ -237,7 +287,7 @@ SYSCALL_DEFINE2(ustat, unsigned, dev, struct ustat __user *, ubuf)
 	if (err)
 		return err;
 
-	memset(&tmp,0,sizeof(struct ustat));
+	memset(&tmp, 0, sizeof(struct ustat));
 	tmp.f_tfree = sbuf.f_bfree;
 	tmp.f_tinode = sbuf.f_ffree;
 
@@ -245,20 +295,22 @@ SYSCALL_DEFINE2(ustat, unsigned, dev, struct ustat __user *, ubuf)
 }
 
 #ifdef CONFIG_COMPAT
-static int put_compat_statfs(struct compat_statfs __user *ubuf, struct kstatfs *kbuf)
+static int put_compat_statfs(struct compat_statfs __user *ubuf,
+			     struct kstatfs *kbuf)
 {
 	struct compat_statfs buf;
 	if (sizeof ubuf->f_blocks == 4) {
 		if ((kbuf->f_blocks | kbuf->f_bfree | kbuf->f_bavail |
-		     kbuf->f_bsize | kbuf->f_frsize) & 0xffffffff00000000ULL)
+		     kbuf->f_bsize | kbuf->f_frsize) &
+		    0xffffffff00000000ULL)
 			return -EOVERFLOW;
 		/* f_files and f_ffree may be -1; it's okay
 		 * to stuff that into 32 bits */
-		if (kbuf->f_files != 0xffffffffffffffffULL
-		 && (kbuf->f_files & 0xffffffff00000000ULL))
+		if (kbuf->f_files != 0xffffffffffffffffULL &&
+		    (kbuf->f_files & 0xffffffff00000000ULL))
 			return -EOVERFLOW;
-		if (kbuf->f_ffree != 0xffffffffffffffffULL
-		 && (kbuf->f_ffree & 0xffffffff00000000ULL))
+		if (kbuf->f_ffree != 0xffffffffffffffffULL &&
+		    (kbuf->f_ffree & 0xffffffff00000000ULL))
 			return -EOVERFLOW;
 	}
 	memset(&buf, 0, sizeof(struct compat_statfs));
@@ -283,7 +335,8 @@ static int put_compat_statfs(struct compat_statfs __user *ubuf, struct kstatfs *
  * The following statfs calls are copies of code from fs/statfs.c and
  * should be checked against those from time to time
  */
-COMPAT_SYSCALL_DEFINE2(statfs, const char __user *, pathname, struct compat_statfs __user *, buf)
+COMPAT_SYSCALL_DEFINE2(statfs, const char __user *, pathname,
+		       struct compat_statfs __user *, buf)
 {
 	struct kstatfs tmp;
 	int error = user_statfs(pathname, &tmp);
@@ -292,7 +345,8 @@ COMPAT_SYSCALL_DEFINE2(statfs, const char __user *, pathname, struct compat_stat
 	return error;
 }
 
-COMPAT_SYSCALL_DEFINE2(fstatfs, unsigned int, fd, struct compat_statfs __user *, buf)
+COMPAT_SYSCALL_DEFINE2(fstatfs, unsigned int, fd, struct compat_statfs __user *,
+		       buf)
 {
 	struct kstatfs tmp;
 	int error = fd_statfs(fd, &tmp);
@@ -301,7 +355,8 @@ COMPAT_SYSCALL_DEFINE2(fstatfs, unsigned int, fd, struct compat_statfs __user *,
 	return error;
 }
 
-static int put_compat_statfs64(struct compat_statfs64 __user *ubuf, struct kstatfs *kbuf)
+static int put_compat_statfs64(struct compat_statfs64 __user *ubuf,
+			       struct kstatfs *kbuf)
 {
 	struct compat_statfs64 buf;
 
@@ -326,7 +381,8 @@ static int put_compat_statfs64(struct compat_statfs64 __user *ubuf, struct kstat
 	return 0;
 }
 
-int kcompat_sys_statfs64(const char __user * pathname, compat_size_t sz, struct compat_statfs64 __user * buf)
+int kcompat_sys_statfs64(const char __user *pathname, compat_size_t sz,
+			 struct compat_statfs64 __user *buf)
 {
 	struct kstatfs tmp;
 	int error;
@@ -340,12 +396,14 @@ int kcompat_sys_statfs64(const char __user * pathname, compat_size_t sz, struct 
 	return error;
 }
 
-COMPAT_SYSCALL_DEFINE3(statfs64, const char __user *, pathname, compat_size_t, sz, struct compat_statfs64 __user *, buf)
+COMPAT_SYSCALL_DEFINE3(statfs64, const char __user *, pathname, compat_size_t,
+		       sz, struct compat_statfs64 __user *, buf)
 {
 	return kcompat_sys_statfs64(pathname, sz, buf);
 }
 
-int kcompat_sys_fstatfs64(unsigned int fd, compat_size_t sz, struct compat_statfs64 __user * buf)
+int kcompat_sys_fstatfs64(unsigned int fd, compat_size_t sz,
+			  struct compat_statfs64 __user *buf)
 {
 	struct kstatfs tmp;
 	int error;
@@ -359,7 +417,8 @@ int kcompat_sys_fstatfs64(unsigned int fd, compat_size_t sz, struct compat_statf
 	return error;
 }
 
-COMPAT_SYSCALL_DEFINE3(fstatfs64, unsigned int, fd, compat_size_t, sz, struct compat_statfs64 __user *, buf)
+COMPAT_SYSCALL_DEFINE3(fstatfs64, unsigned int, fd, compat_size_t, sz,
+		       struct compat_statfs64 __user *, buf)
 {
 	return kcompat_sys_fstatfs64(fd, sz, buf);
 }

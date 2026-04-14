@@ -12,6 +12,10 @@
 #include <linux/log2.h>
 #include "sched.h"
 
+/* entity_eligible() is defined in fair.c; its extern in sched.h is inside
+ * #ifdef CONFIG_SCHED_WALT which may not be active, so declare it here. */
+extern int entity_eligible(struct cfs_rq *cfs_rq, struct sched_entity *se);
+
 static DEFINE_SPINLOCK(sched_debug_lock);
 
 /*
@@ -319,7 +323,7 @@ print_task(struct seq_file *m, struct rq *rq, struct task_struct *p)
 	SEQ_printf(m, "%15s %5d %9Ld.%06ld %c %9Ld.%06ld %c %9Ld.%06ld %9Ld.%06ld %9Ld %5d ",
 		p->comm, task_pid_nr(p),
 		SPLIT_NS(p->se.vruntime),
-		entity_eligible(cfs_rq_of(&p->se), &p->se) ? 'E' : 'N',
+		entity_eligible(&rq->cfs, &p->se) ? 'E' : 'N',
 		SPLIT_NS(p->se.deadline),
 		p->se.custom_slice ? 'S' : ' ',
 		SPLIT_NS(p->se.slice),
@@ -373,6 +377,7 @@ void print_cfs_rq(struct seq_file *m, int cpu, struct cfs_rq *cfs_rq)
 	unsigned int sum_shift;
 	unsigned long flags;
 	u64 sum_weight;
+	u64 min_vruntime __maybe_unused = 0;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	SEQ_printf(m, "\n");
@@ -392,7 +397,8 @@ void print_cfs_rq(struct seq_file *m, int cpu, struct cfs_rq *cfs_rq)
 	last = __pick_last_entity(cfs_rq);
 	if (last)
 		right_vruntime = last->vruntime;
-	min_vruntime = cfs_rq->min_vruntime;
+	/* min_vruntime replaced by zero_vruntime in EEVDF; read zero_vruntime instead */
+	min_vruntime = cfs_rq->zero_vruntime;
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
 	sum_w_vruntime = cfs_rq->sum_w_vruntime;
 	avruntime = avg_vruntime(cfs_rq);
@@ -849,7 +855,8 @@ void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
 	P(se.avg.util_avg);
 	P(se.avg.last_update_time);
 	P(se.avg.util_est.ewma);
-	PM(se.avg.util_est.enqueued, ~UTIL_AVG_UNCHANGED);
+	SEQ_printf(m, "%-45s:%21Ld\n", "se.avg.util_est.enqueued",
+		   (long long)(p->se.avg.util_est.enqueued & ~UTIL_AVG_UNCHANGED));
 #endif
 	P(policy);
 	P(prio);

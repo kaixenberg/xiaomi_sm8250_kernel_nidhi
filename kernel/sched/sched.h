@@ -3292,7 +3292,7 @@ static inline void restore_cgroup_boost_settings(void) { }
 #endif
 
 extern int alloc_related_thread_groups(void);
-extern int entity_eligible(struct cfs_rq *cfs_rq, struct sched_entity *se);
+
 
 extern void check_for_migration(struct rq *rq, struct task_struct *p);
 

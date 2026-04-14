@@ -2,7 +2,7 @@
 # E404 Kernel Compile Script !
 # Put a fucking credit if you use something from here !
 
-NIDHIKERNEL_VERSION_STR='2.2-alpha'
+NIDHIKERNEL_VERSION_STR="2-staging-$(git rev-parse --short HEAD)"
 
 # Set kernel source directory and base directory to place tools
 KERNEL_DIR="$PWD"

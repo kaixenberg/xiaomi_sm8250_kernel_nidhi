@@ -14,17 +14,18 @@
 
 #include <asm/sections.h>
 
-#define KSYM_NAME_LEN 128
-#define KSYM_SYMBOL_LEN (sizeof("%s+%#lx/%#lx [%s]") + (KSYM_NAME_LEN - 1) + \
-			 2*(BITS_PER_LONG*3/10) + (MODULE_NAME_LEN - 1) + 1)
+#define KSYM_NAME_LEN 256
+#define KSYM_SYMBOL_LEN                                                        \
+	(sizeof("%s+%#lx/%#lx [%s]") + (KSYM_NAME_LEN - 1) +                   \
+	 2 * (BITS_PER_LONG * 3 / 10) + (MODULE_NAME_LEN - 1) + 1)
 
 struct cred;
 struct module;
 
 static inline int is_kernel_inittext(unsigned long addr)
 {
-	if (addr >= (unsigned long)_sinittext
-	    && addr <= (unsigned long)_einittext)
+	if (addr >= (unsigned long)_sinittext &&
+	    addr <= (unsigned long)_einittext)
 		return 1;
 	return 0;
 }
@@ -81,14 +82,13 @@ int kallsyms_on_each_symbol(int (*fn)(void *, const char *, struct module *,
 			    void *data);
 
 extern int kallsyms_lookup_size_offset(unsigned long addr,
-				  unsigned long *symbolsize,
-				  unsigned long *offset);
+				       unsigned long *symbolsize,
+				       unsigned long *offset);
 
 /* Lookup an address.  modname is set to NULL if it's in the kernel. */
-const char *kallsyms_lookup(unsigned long addr,
-			    unsigned long *symbolsize,
-			    unsigned long *offset,
-			    char **modname, char *namebuf);
+const char *kallsyms_lookup(unsigned long addr, unsigned long *symbolsize,
+			    unsigned long *offset, char **modname,
+			    char *namebuf);
 
 /* Look up a kernel symbol and return it in a text buffer. */
 extern int sprint_symbol(char *buffer, unsigned long address);
@@ -96,7 +96,8 @@ extern int sprint_symbol_no_offset(char *buffer, unsigned long address);
 extern int sprint_backtrace(char *buffer, unsigned long address);
 
 int lookup_symbol_name(unsigned long addr, char *symname);
-int lookup_symbol_attrs(unsigned long addr, unsigned long *size, unsigned long *offset, char *modname, char *name);
+int lookup_symbol_attrs(unsigned long addr, unsigned long *size,
+			unsigned long *offset, char *modname, char *name);
 
 /* How and when do we show kallsyms values? */
 extern bool kallsyms_show_value(const struct cred *cred);
@@ -125,8 +126,8 @@ static inline int kallsyms_lookup_size_offset(unsigned long addr,
 
 static inline const char *kallsyms_lookup(unsigned long addr,
 					  unsigned long *symbolsize,
-					  unsigned long *offset,
-					  char **modname, char *namebuf)
+					  unsigned long *offset, char **modname,
+					  char *namebuf)
 {
 	return NULL;
 }
@@ -154,7 +155,9 @@ static inline int lookup_symbol_name(unsigned long addr, char *symname)
 	return -ERANGE;
 }
 
-static inline int lookup_symbol_attrs(unsigned long addr, unsigned long *size, unsigned long *offset, char *modname, char *name)
+static inline int lookup_symbol_attrs(unsigned long addr, unsigned long *size,
+				      unsigned long *offset, char *modname,
+				      char *name)
 {
 	return -ERANGE;
 }
@@ -168,7 +171,7 @@ static inline bool kallsyms_show_value(const struct cred *cred)
 
 static inline void print_ip_sym(unsigned long ip)
 {
-	printk("[<%px>] %pS\n", (void *) ip, (void *) ip);
+	printk("[<%px>] %pS\n", (void *)ip, (void *)ip);
 }
 
 #endif /*_LINUX_KALLSYMS_H*/

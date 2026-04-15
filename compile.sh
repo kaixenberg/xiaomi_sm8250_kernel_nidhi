@@ -216,6 +216,19 @@ while true; do
                 -e CONFIG_TCP_CONG_BBR \
                 -e CONFIG_DEFAULT_BBR \
 
+            # Config modifications to make boeffla_wl_blocker
+            scripts/config --file out/.config \
+                -e CONFIG_BOEFFLA_WL_BLOCKER \
+                
+            # Config modifications to enable alt sched govs
+            scripts/config --file out/.config \
+                -e CONFIG_CPU_FREQ_GOV_PERFORMANCE \
+                -e CONFIG_CPU_FREQ_GOV_POWERSAVE \
+                -e CONFIG_CPU_FREQ_GOV_USERSPACE \
+                -e CONFIG_CPU_FREQ_GOV_ONDEMAND \
+                -e CONFIG_CPU_FREQ_GOV_CONSERVATIVE \
+                -e CONFIG_CPU_BOOST \
+                
             # Config modifications for localversion
             scripts/config --file out/.config \
                 -d CONFIG_LOCALVERSION_AUTO \

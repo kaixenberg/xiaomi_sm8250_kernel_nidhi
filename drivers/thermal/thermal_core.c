@@ -1724,15 +1724,21 @@ static DEVICE_ATTR(screen_state, 0644, thermal_screen_state_show, NULL);
 static ssize_t thermal_sconfig_show(struct device *dev,
 				    struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "10\n");
+	return snprintf(buf, PAGE_SIZE, "%d\n", atomic_read(&switch_mode));
 }
 
 static ssize_t thermal_sconfig_store(struct device *dev,
 				     struct device_attribute *attr,
 				     const char *buf, size_t len)
 {
+	int ret, val = -1;
+
+	ret = kstrtoint(buf, 10, &val);
+
 	atomic_set(&switch_mode, val);
 
+	if (ret)
+		return ret;
 	return len;
 }
 

@@ -92,7 +92,7 @@ clearbuild() {
 zipbuild() {
     echo "-- Zipping Kernel --"
     cd "$AK3_DIR" || exit 1
-    ZIP_NAME="NidhiKernel-${NIDHIKERNEL_VERSION_STR}-BPF-${TARGET}-$(date "+%y%m%d").zip"
+    ZIP_NAME="${TARGET}-NidhiKernel-${NIDHIKERNEL_VERSION_STR}-BPF-$(date "+%y%m%d").zip"
     zip -r9 "$BASE_DIR/$ZIP_NAME" META-INF/ tools/ "${TARGET}"*-Image "${TARGET}"*-dtb "${TARGET}"*-dtbo.img anykernel.sh
     cd "$KERNEL_DIR" || exit 1
 }

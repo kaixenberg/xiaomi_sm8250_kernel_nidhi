@@ -227,6 +227,7 @@ while true; do
                 -e CONFIG_CPU_FREQ_GOV_USERSPACE \
                 -e CONFIG_CPU_FREQ_GOV_ONDEMAND \
                 -e CONFIG_CPU_FREQ_GOV_CONSERVATIVE \
+                -e CONFIG_SCHED_WALT \
                 -e CONFIG_CPU_BOOST \
                 
             # Config modifications for localversion

@@ -49,21 +49,9 @@ extern void *cnss_ipc_log_long_context;
 	} while (0)
 
 #ifdef CONFIG_CNSS2_DEBUG
-#define CNSS_ASSERT(_condition) do {					\
-		if (!(_condition)) {					\
-			cnss_pr_err("ASSERT at line %d\n",		\
-				    __LINE__);				\
-			BUG();						\
-		}							\
-	} while (0)
+#define CNSS_ASSERT(_condition) do {} while (0)
 #else
-#define CNSS_ASSERT(_condition) do {					\
-		if (!(_condition)) {					\
-			cnss_pr_err("ASSERT at line %d\n",		\
-				    __LINE__);				\
-			WARN_ON(1);					\
-		}							\
-	} while (0)
+#define CNSS_ASSERT(_condition) do {} while (0)
 #endif
 
 #define cnss_fatal_err(_fmt, ...)					\

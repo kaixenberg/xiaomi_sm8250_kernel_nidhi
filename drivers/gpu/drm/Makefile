@@ -32,11 +32,13 @@ drm-$(CONFIG_AGP) += drm_agpsupport.o
 drm-$(CONFIG_DEBUG_FS) += drm_debugfs.o drm_debugfs_crc.o
 drm-$(CONFIG_DRM_LOAD_EDID_FIRMWARE) += drm_edid_load.o
 
-drm_kms_helper-y := drm_crtc_helper.o drm_dp_helper.o drm_probe_helper.o \
-		drm_plane_helper.o drm_dp_mst_topology.o drm_atomic_helper.o \
-		drm_kms_helper_common.o drm_dp_dual_mode_helper.o \
+drm_kms_helper-y := drm_crtc_helper.o drm_probe_helper.o \
+		drm_plane_helper.o drm_atomic_helper.o \
+		drm_kms_helper_common.o \
 		drm_simple_kms_helper.o drm_modeset_helper.o \
 		drm_scdc_helper.o drm_gem_framebuffer_helper.o
+
+obj-$(CONFIG_MSM_EXT_DISPLAY) += drm_dp_helper.o drm_dp_mst_topology.o drm_dp_dual_mode_helper.o
 
 drm_kms_helper-$(CONFIG_DRM_PANEL_BRIDGE) += bridge/panel.o
 drm_kms_helper-$(CONFIG_DRM_FBDEV_EMULATION) += drm_fb_helper.o

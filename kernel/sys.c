@@ -524,8 +524,7 @@ long __sys_setreuid(uid_t ruid, uid_t euid)
 	retval = -EPERM;
 	if (ruid != (uid_t)-1) {
 		new->uid = kruid;
-		if (!uid_eq(old->uid, kruid) &&
-		    !uid_eq(old->euid, kruid) &&
+		if (!uid_eq(old->uid, kruid) && !uid_eq(old->euid, kruid) &&
 		    !ns_capable_setid(old->user_ns, CAP_SETUID))
 			goto error;
 	}
@@ -655,7 +654,7 @@ long __sys_setresuid(uid_t ruid, uid_t euid, uid_t suid)
 
 	retval = -EPERM;
 	if (!ns_capable(old->user_ns, CAP_SETUID)) {
-		if (ruid != (uid_t) -1        && !uid_eq(kruid, old->uid) &&
+		if (ruid != (uid_t)-1 && !uid_eq(kruid, old->uid) &&
 		    !uid_eq(kruid, old->euid) && !uid_eq(kruid, old->suid))
 			goto error;
 		if (euid != (uid_t)-1 && !uid_eq(keuid, old->uid) &&
@@ -1251,7 +1250,6 @@ extern void susfs_spoof_uname(struct new_utsname *tmp);
 SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
 {
 	struct new_utsname tmp;
-	uid_t cur_uid = current_uid().val;
 	uid_t cur_uid = current_uid().val;
 
 	down_read(&uts_sem);

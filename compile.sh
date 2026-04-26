@@ -33,11 +33,11 @@ case "$*" in
         ;;
 esac
 
-if [[ -d "$BASE_DIR/toolchains/lilium-clang" ]]; then
-    export PATH="$BASE_DIR/toolchains/lilium-clang/bin:$PATH"
-    TC="Lilium-Clang"
+if [[ -d "$BASE_DIR/toolchains/llvm-clang" ]]; then
+    export PATH="$BASE_DIR/toolchains/llvm-clang/bin:$PATH"
+    TC="llvm-Clang"
 else
-    echo "-- !! Please provide lilium-clang in toolchains folder !! --"
+    echo "-- !! Please provide llvm-clang in toolchains folder !! --"
     exit 1
 fi
 

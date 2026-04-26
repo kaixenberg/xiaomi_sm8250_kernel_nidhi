@@ -1083,6 +1083,64 @@ void cnss_pci_unlock_reg_window(struct device *dev, unsigned long *flags)
 }
 EXPORT_SYMBOL(cnss_pci_unlock_reg_window);
 
+const char *cnss_mhi_state_to_str(enum cnss_mhi_state state)
+{
+	switch (state) {
+	case CNSS_MHI_INIT:
+		return "INIT";
+	case CNSS_MHI_DEINIT:
+		return "DEINIT";
+	case CNSS_MHI_POWER_ON:
+		return "POWER_ON";
+	case CNSS_MHI_POWERING_OFF:
+		return "POWERING_OFF";
+	case CNSS_MHI_POWER_OFF:
+		return "POWER_OFF";
+	case CNSS_MHI_FORCE_POWER_OFF:
+		return "FORCE_POWER_OFF";
+	case CNSS_MHI_SUSPEND:
+		return "SUSPEND";
+	case CNSS_MHI_RESUME:
+		return "RESUME";
+	case CNSS_MHI_TRIGGER_RDDM:
+		return "TRIGGER_RDDM";
+	case CNSS_MHI_RDDM:
+		return "RDDM";
+	case CNSS_MHI_RDDM_DONE:
+		return "RDDM_DONE";
+	}
+	return "UNKNOWN";
+}
+
+const char *cnss_mhi_notify_status_to_str(enum MHI_CB reason)
+{
+	switch (reason) {
+	case MHI_CB_IDLE:
+		return "IDLE";
+	case MHI_CB_PENDING_DATA:
+		return "PENDING_DATA";
+	case MHI_CB_DTR_SIGNAL:
+		return "DTR_SIGNAL";
+	case MHI_CB_LPM_ENTER:
+		return "LPM_ENTER";
+	case MHI_CB_LPM_EXIT:
+		return "LPM_EXIT";
+	case MHI_CB_EE_RDDM:
+		return "EE_RDDM";
+	case MHI_CB_EE_MISSION_MODE:
+		return "EE_MISSION_MODE";
+	case MHI_CB_SYS_ERROR:
+		return "SYS_ERROR";
+	case MHI_CB_FATAL_ERROR:
+		return "FATAL_ERROR";
+	case MHI_CB_FW_FALLBACK_IMG:
+		return "FW_FALLBACK_IMG";
+	case MHI_CB_BOOTUP_TIMEOUT:
+		return "BOOTUP_TIMEOUT";
+	}
+	return "UNKNOWN";
+}
+
 static int cnss_pci_check_mhi_state_bit(struct cnss_pci_data *pci_priv,
 					enum cnss_mhi_state mhi_state)
 {

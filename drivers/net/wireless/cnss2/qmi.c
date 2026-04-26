@@ -1033,6 +1033,29 @@ static void cnss_wait_for_wlfw_mac_ready(struct cnss_plat_data *plat_priv)
 	} while (true);
 }
 
+const char *cnss_qmi_mode_to_str(enum cnss_driver_mode mode)
+{
+	switch (mode) {
+	case CNSS_MISSION:
+		return "MISSION";
+	case CNSS_FTM:
+		return "FTM";
+	case CNSS_EPPING:
+		return "EPPING";
+	case CNSS_WALTEST:
+		return "WALTEST";
+	case CNSS_OFF:
+		return "OFF";
+	case CNSS_CCPM:
+		return "CCPM";
+	case CNSS_QVIT:
+		return "QVIT";
+	case CNSS_CALIBRATION:
+		return "CALIBRATION";
+	}
+	return "UNKNOWN";
+}
+
 int cnss_wlfw_wlan_mode_send_sync(struct cnss_plat_data *plat_priv,
 				  enum cnss_driver_mode mode)
 {

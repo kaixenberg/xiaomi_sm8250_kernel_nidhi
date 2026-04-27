@@ -228,7 +228,11 @@ while true; do
                 -e CONFIG_CPU_FREQ_GOV_ONDEMAND \
                 -e CONFIG_CPU_FREQ_GOV_CONSERVATIVE \
                 -e CONFIG_CPU_BOOST \
-                
+
+            # Config modifications for zeromount
+            scripts/config --file out/.config \
+                -e CONFIG_ZEROMOUNT \
+
             # Config modifications for localversion
             scripts/config --file out/.config \
                 -d CONFIG_LOCALVERSION_AUTO \

@@ -229,6 +229,15 @@ while true; do
                 -e CONFIG_CPU_FREQ_GOV_CONSERVATIVE \
                 -e CONFIG_CPU_BOOST \
                 
+            # Config modifications to enable Thin LTO
+            scripts/config --file out/.config \
+                -d CONFIG_LTO_NONE \
+                -d CONFIG_LTO_CLANG_FULL \
+                -e CONFIG_HAS_LTO_CLANG \
+                -e CONFIG_LTO \
+                -e CONFIG_LTO_CLANG \
+                -e CONFIG_LTO_CLANG_THIN \
+                
             # Config modifications for localversion
             scripts/config --file out/.config \
                 -d CONFIG_LOCALVERSION_AUTO \
